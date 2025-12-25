@@ -1,0 +1,1 @@
+while (i := input("Rechnung(oder Enter zum Beenden):")): print(eval(i))
