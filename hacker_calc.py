@@ -12,27 +12,38 @@ ops = {
 }
 
 def eval_expr(expr):
-    """Sicherer mathematischer Ausdrucksparser."""
     def _eval(node):
-        if isinstance(node, ast.Num):  # Zahl
-            return node.n
-        if isinstance(node, ast.BinOp):  # z.B. 2 + 3
-            if type(node.op) not in ops:
+        if isinstance(node, ast.Constant) and isinstance(node.value, (int, float)):
+            return node.value
+
+        if isinstance(node, ast.BinOp):
+            op_type = type(node.op)
+            if op_type not in ops:
                 raise ValueError
-            return ops[type(node.op)](_eval(node.left), _eval(node.right))
-        if isinstance(node, ast.UnaryOp):  # z.B. -3
-            if type(node.op) not in ops:
+            return ops[op_type](_eval(node.left), _eval(node.right))
+
+        if isinstance(node, ast.UnaryOp):
+            op_type = type(node.op)
+            if op_type not in ops:
                 raise ValueError
-            return ops[type(node.op)](_eval(node.operand))
+            return ops[op_type](_eval(node.operand))
+
         raise ValueError
 
     tree = ast.parse(expr, mode="eval")
     return _eval(tree.body)
 
 
-# Hauptschleife
-while (i := input("Rechnung (oder Enter zum Beenden): ")).strip():
-    try:
-        print(eval_expr(i))
-    except Exception:
-        print("ungültig")
+def main():
+    while True:
+        i = input("Rechnung (oder Enter zum Beenden): ")
+        if not i.strip():
+            break
+        try:
+            print(eval_expr(i))
+        except Exception:
+            print("ungültig")
+
+
+if __name__ == "__main__":
+    main()
