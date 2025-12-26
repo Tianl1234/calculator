@@ -1,2 +1,2 @@
 # github-my
-daily-github-gym
+privat-github-librry
