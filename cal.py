@@ -9,7 +9,7 @@ import tkinter as tk
 from tkinter import ttk
 
 # ============================================================
-#  DEIN SICHERER AST-EVALUATOR (unverändert, nur eingebettet)
+#  SICHERER AST-EVALUATOR
 # ============================================================
 
 OPS = {
@@ -144,6 +144,10 @@ def eval_expr(expr: str, mode: str = "float", precision: int | None = None):
                 return convert_number(node.value)
             raise EvalError("Nur Zahlen als Konstanten erlaubt")
 
+        # älteres Python: ast.Num
+        if sys.version_info < (3, 8) and isinstance(node, ast.Num):
+            return convert_number(node.n)
+
         if isinstance(node, ast.BinOp):
             op_type = type(node.op)
             if op_type not in OPS:
@@ -186,105 +190,191 @@ def eval_expr(expr: str, mode: str = "float", precision: int | None = None):
     except SyntaxError:
         raise EvalError("Syntaxfehler")
 
+    if not isinstance(tree, ast.Expression):
+        raise EvalError("Nur Ausdrücke erlaubt")
+
     return _eval(tree.body)
 
 # ============================================================
-#  MODERNES HANDY-GUI LAYOUT
+#  AUTOMATISCHE MODUS-ERKENNUNG
+# ============================================================
+
+def auto_detect_mode(expr: str) -> str:
+    expr = expr.replace(" ", "")
+
+    if "." in expr:
+        return "decimal"
+
+    float_funcs = ("sin", "cos", "tan", "log", "ln", "sqrt")
+    if any(f in expr for f in float_funcs):
+        return "decimal"
+
+    if "/" in expr and "//" not in expr:
+        parts = expr.split("/")
+        try:
+            int(parts[0][-1])
+            int(parts[1][0])
+            return "fraction"
+        except Exception:
+            pass
+
+    if all(ch.isdigit() or ch in "+-*/() " for ch in expr):
+        return "fraction"
+
+    return "float"
+
+# ============================================================
+#  THEMES (ONEUI CLASSIC – SOFT PASTEL + DARK MODE)
+# ============================================================
+
+LIGHT_THEME = {
+    "bg_main": "#F5F5F7",
+    "bg_display": "#FFFFFF",
+    "fg_display": "#333333",
+    "fg_display_secondary": "#888888",
+    "btn_number_bg": "#F2F2F2",
+    "btn_op_bg": "#A7C7FF",
+    "btn_eq_bg": "#7BE8C9",
+    "btn_clear_bg": "#FF8A80",
+    "btn_func_bg": "#E0E7FF",
+    "btn_text": "#333333",
+    "btn_text_inverse": "#FFFFFF",
+    "mode_label_fg": "#555555",
+}
+
+DARK_THEME = {
+    "bg_main": "#111111",
+    "bg_display": "#000000",
+    "fg_display": "#E0E0E0",
+    "fg_display_secondary": "#BBBBBB",
+    "btn_number_bg": "#2C2C2C",
+    "btn_op_bg": "#4A90E2",
+    "btn_eq_bg": "#00C853",
+    "btn_clear_bg": "#D32F2F",
+    "btn_func_bg": "#3949AB",
+    "btn_text": "#FFFFFF",
+    "btn_text_inverse": "#FFFFFF",
+    "mode_label_fg": "#BBBBBB",
+}
+
+# ============================================================
+#  GUI MIT HISTORY, THEME-TOGGLE, ONEUI STYLE
 # ============================================================
 
 class CalculatorGUI:
     def __init__(self, root):
         self.root = root
         self.root.title("Sicherer Taschenrechner")
-        self.root.configure(bg="#111111")
         self.root.resizable(False, False)
 
-        self.mode_var = tk.StringVar(value="float")
+        self.theme = "light"
+        self.theme_data = LIGHT_THEME
 
-        # Display
-        self.display = tk.Entry(
-            root,
-            font=("Helvetica", 32),
-            bd=0,
-            bg="#000000",
-            fg="#00FF7F",
-            insertbackground="#00FF7F",
-            justify="right",
-            relief="flat",
-        )
-        self.display.grid(row=0, column=0, columnspan=4, padx=15, pady=(20, 10), sticky="nsew", ipady=20)
+        self.history = []
+        self.history_window = None
 
-        btn_cfg = {
-            "font": ("Helvetica", 22),
-            "bd": 0,
-            "width": 4,
-            "height": 2,
-            "relief": "flat",
-            "activebackground": "#333333",
-            "activeforeground": "white",
-        }
+        self.widgets_buttons = []
+        self.widgets_misc = []
 
-        buttons = [
-            ("C", 1, 0, "#D32F2F"),
-            ("←", 1, 1, "#444444"),
-            ("(", 1, 2, "#444444"),
-            (")", 1, 3, "#444444"),
-
-            ("7", 2, 0, "#222222"),
-            ("8", 2, 1, "#222222"),
-            ("9", 2, 2, "#222222"),
-            ("/", 2, 3, "#1E88E5"),
-
-            ("4", 3, 0, "#222222"),
-            ("5", 3, 1, "#222222"),
-            ("6", 3, 2, "#222222"),
-            ("*", 3, 3, "#1E88E5"),
-
-            ("1", 4, 0, "#222222"),
-            ("2", 4, 1, "#222222"),
-            ("3", 4, 2, "#222222"),
-            ("-", 4, 3, "#1E88E5"),
-
-            ("0", 5, 0, "#222222"),
-            (".", 5, 1, "#222222"),
-            ("+", 5, 2, "#1E88E5"),
-            ("=", 5, 3, "#43A047"),
-        ]
-
-        for (text, r, c, color) in buttons:
-            self._create_button(text, r, c, color, btn_cfg)
-
-        # Modus-Auswahl
-        mode_frame = tk.Frame(root, bg="#111111")
-        mode_frame.grid(row=6, column=0, columnspan=4, pady=10)
-
-        tk.Label(mode_frame, text="Modus:", fg="white", bg="#111111").pack(side="left")
-
-        for m in ("float", "decimal", "fraction"):
-            rb = tk.Radiobutton(
-                mode_frame,
-                text=m,
-                variable=self.mode_var,
-                value=m,
-                fg="white",
-                bg="#111111",
-                selectcolor="#111111",
-                activebackground="#111111",
-                activeforeground="white",
-                indicatoron=False,
-                width=8,
-                relief="ridge",
-                bd=1,
-                padx=2,
-                pady=2,
-            )
-            rb.pack(side="left", padx=4)
+        self._build_layout()
+        self.apply_theme()
 
         self.root.bind("<Return>", lambda e: self.calculate())
         self.root.bind("<KP_Enter>", lambda e: self.calculate())
         self.root.bind("<BackSpace>", lambda e: self.backspace())
 
-    def _create_button(self, text, row, col, color, cfg):
+    def _build_layout(self):
+        self.root.configure(bg=self.theme_data["bg_main"])
+
+        top_frame = tk.Frame(self.root, bg=self.theme_data["bg_main"])
+        top_frame.grid(row=0, column=0, columnspan=4, sticky="nsew", padx=10, pady=(10, 0))
+
+        self.display = tk.Entry(
+            top_frame,
+            font=("Helvetica", 30),
+            bd=0,
+            relief="flat",
+            justify="right",
+        )
+        self.display.grid(row=0, column=0, columnspan=3, sticky="nsew", pady=(0, 5))
+
+        self.theme_button = tk.Button(
+            top_frame,
+            text="☀",
+            command=self.toggle_theme,
+            bd=0,
+            relief="flat",
+            font=("Helvetica", 16),
+            width=3,
+        )
+        self.theme_button.grid(row=0, column=3, sticky="ne", padx=(5, 0))
+
+        self.mode_label = tk.Label(
+            top_frame,
+            text="Modus: auto",
+            anchor="w",
+            font=("Helvetica", 10),
+        )
+        self.mode_label.grid(row=1, column=0, columnspan=2, sticky="w", pady=(0, 10))
+
+        self.history_button = tk.Button(
+            top_frame,
+            text="🕘 Verlauf",
+            command=self.open_history_window,
+            bd=0,
+            relief="flat",
+            font=("Helvetica", 10),
+        )
+        self.history_button.grid(row=1, column=2, columnspan=2, sticky="e")
+
+        self.widgets_misc.extend([top_frame, self.display, self.theme_button,
+                                  self.mode_label, self.history_button])
+
+        btn_cfg = {
+            "font": ("Helvetica", 20),
+            "bd": 0,
+            "relief": "flat",
+            "width": 4,
+            "height": 2,
+            "borderwidth": 0,
+        }
+
+        buttons = [
+            ("C", 1, 0, "clear"),
+            ("←", 1, 1, "func"),
+            ("(", 1, 2, "func"),
+            (")", 1, 3, "func"),
+
+            ("7", 2, 0, "num"),
+            ("8", 2, 1, "num"),
+            ("9", 2, 2, "num"),
+            ("/", 2, 3, "op"),
+
+            ("4", 3, 0, "num"),
+            ("5", 3, 1, "num"),
+            ("6", 3, 2, "num"),
+            ("*", 3, 3, "op"),
+
+            ("1", 4, 0, "num"),
+            ("2", 4, 1, "num"),
+            ("3", 4, 2, "num"),
+            ("-", 4, 3, "op"),
+
+            ("0", 5, 0, "num"),
+            (".", 5, 1, "num"),
+            ("+", 5, 2, "op"),
+            ("=", 5, 3, "eq"),
+        ]
+
+        for (text, r, c, kind) in buttons:
+            self._create_button(text, r, c, kind, btn_cfg)
+
+        for r in range(1, 6):
+            self.root.grid_rowconfigure(r, weight=1)
+        for c in range(4):
+            self.root.grid_columnconfigure(c, weight=1)
+
+    def _create_button(self, text, row, col, kind, cfg):
         if text == "C":
             cmd = self.clear
         elif text == "←":
@@ -294,8 +384,73 @@ class CalculatorGUI:
         else:
             cmd = lambda t=text: self.insert_text(t)
 
-        btn = tk.Button(self.root, text=text, command=cmd, bg=color, fg="white", **cfg)
-        btn.grid(row=row, column=col, padx=8, pady=8, sticky="nsew")
+        btn = tk.Button(self.root, text=text, command=cmd, **cfg)
+        btn.grid(row=row, column=col, padx=6, pady=6, sticky="nsew")
+        self.widgets_buttons.append((btn, kind))
+
+    def apply_theme(self):
+        t = self.theme_data
+
+        self.root.configure(bg=t["bg_main"])
+        for w in self.widgets_misc:
+            if isinstance(w, tk.Frame):
+                w.configure(bg=t["bg_main"])
+            elif isinstance(w, tk.Entry):
+                w.configure(bg=t["bg_display"], fg=t["fg_display"], insertbackground=t["fg_display"])
+            elif isinstance(w, tk.Label):
+                if w is self.mode_label:
+                    w.configure(bg=t["bg_main"], fg=t["mode_label_fg"])
+                else:
+                    w.configure(bg=t["bg_main"], fg=t["fg_display_secondary"])
+            elif isinstance(w, tk.Button):
+                if w is self.theme_button:
+                    w.configure(
+                        bg=t["bg_main"],
+                        fg=t["fg_display"],
+                        activebackground=t["bg_main"],
+                        activeforeground=t["fg_display"],
+                    )
+                elif w is self.history_button:
+                    w.configure(
+                        bg=t["bg_main"],
+                        fg=t["fg_display_secondary"],
+                        activebackground=t["bg_main"],
+                        activeforeground=t["fg_display_secondary"],
+                    )
+
+        for btn, kind in self.widgets_buttons:
+            if kind == "num":
+                bg = t["btn_number_bg"]
+                fg = t["btn_text"]
+            elif kind == "op":
+                bg = t["btn_op_bg"]
+                fg = t["btn_text"]
+            elif kind == "eq":
+                bg = t["btn_eq_bg"]
+                fg = t["btn_text_inverse"]
+            elif kind == "clear":
+                bg = t["btn_clear_bg"]
+                fg = t["btn_text_inverse"]
+            else:
+                bg = t["btn_func_bg"]
+                fg = t["btn_text"]
+
+            btn.configure(
+                bg=bg,
+                fg=fg,
+                activebackground=bg,
+                activeforeground=fg,
+            )
+
+        if self.history_window is not None and tk.Toplevel.winfo_exists(self.history_window):
+            self._apply_theme_to_history()
+
+        self.theme_button.configure(text="☀" if self.theme == "light" else "🌙")
+
+    def toggle_theme(self):
+        self.theme = "dark" if self.theme == "light" else "light"
+        self.theme_data = DARK_THEME if self.theme == "dark" else LIGHT_THEME
+        self.apply_theme()
 
     def insert_text(self, text):
         if text == "^":
@@ -305,6 +460,7 @@ class CalculatorGUI:
 
     def clear(self):
         self.display.delete(0, tk.END)
+        self.mode_label.config(text="Modus: auto")
 
     def backspace(self):
         pos = self.display.index(tk.INSERT)
@@ -315,7 +471,10 @@ class CalculatorGUI:
         expr = self.display.get().strip()
         if not expr:
             return
-        mode = self.mode_var.get()
+
+        mode = auto_detect_mode(expr)
+        self.mode_label.config(text=f"Modus: {mode}")
+
         try:
             res = eval_expr(expr, mode=mode, precision=28)
         except (DivisionByZero, ZeroDivisionError):
@@ -328,8 +487,71 @@ class CalculatorGUI:
             self.display.delete(0, tk.END)
             self.display.insert(0, "ungültig")
         else:
+            result_str = str(res)
+            self.history.append((expr, result_str, mode))
+            self.update_history_listbox()
+
             self.display.delete(0, tk.END)
-            self.display.insert(0, str(res))
+            self.display.insert(0, result_str)
+
+    # ---------------- HISTORY ----------------
+
+    def open_history_window(self):
+        if self.history_window is not None and tk.Toplevel.winfo_exists(self.history_window):
+            self.history_window.lift()
+            return
+
+        self.history_window = tk.Toplevel(self.root)
+        self.history_window.title("Verlauf")
+        self.history_window.resizable(False, False)
+
+        self.history_listbox = tk.Listbox(self.history_window, font=("Helvetica", 11), height=15, width=40)
+        self.history_listbox.pack(side="left", fill="both", expand=True)
+
+        scrollbar = tk.Scrollbar(self.history_window, command=self.history_listbox.yview)
+        scrollbar.pack(side="right", fill="y")
+        self.history_listbox.config(yscrollcommand=scrollbar.set)
+
+        self.history_listbox.bind("<Double-Button-1>", self.on_history_double_click)
+
+        self._apply_theme_to_history()
+        self.update_history_listbox()
+
+    def _apply_theme_to_history(self):
+        if self.history_window is None:
+            return
+        t = self.theme_data
+        self.history_window.configure(bg=t["bg_main"])
+        if hasattr(self, "history_listbox"):
+            self.history_listbox.configure(
+                bg=t["bg_display"],
+                fg=t["fg_display"],
+                selectbackground=t["btn_op_bg"],
+                selectforeground=t["btn_text"],
+                borderwidth=0,
+                highlightthickness=0,
+            )
+
+    def update_history_listbox(self):
+        if self.history_window is None or not tk.Toplevel.winfo_exists(self.history_window):
+            return
+        self.history_listbox.delete(0, tk.END)
+        for expr, res, mode in reversed(self.history):
+            self.history_listbox.insert(tk.END, f"[{mode}] {expr} = {res}")
+
+    def on_history_double_click(self, event):
+        selection = self.history_listbox.curselection()
+        if not selection:
+            return
+        index = len(self.history) - 1 - selection[0]
+        expr, res, mode = self.history[index]
+        self.display.delete(0, tk.END)
+        self.display.insert(0, expr)
+        self.mode_label.config(text=f"Modus: {mode}")
+
+# ============================================================
+#  START
+# ============================================================
 
 def main():
     root = tk.Tk()
