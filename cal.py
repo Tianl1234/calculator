@@ -1,12 +1,17 @@
 import ast
 import operator
 import math
-import argparse
 import sys
 from decimal import Decimal, getcontext, Context, DivisionByZero
 from fractions import Fraction
 
-# Allowed operators mapping
+import tkinter as tk
+from tkinter import ttk
+
+# -----------------------------
+# Dein Evaluator-Code (leicht angepasst: kein readline, keine CLI)
+# -----------------------------
+
 OPS = {
     ast.Add: operator.add,
     ast.Sub: operator.sub,
@@ -19,8 +24,6 @@ OPS = {
     ast.UAdd: lambda x: x,
 }
 
-# Whitelisted functions (names -> callable)
-# Note: Some functions behave differently depending on numeric mode.
 _MATH_FUNCS = {
     "sin": math.sin,
     "cos": math.cos,
@@ -34,7 +37,6 @@ _MATH_FUNCS = {
     "pow": math.pow,
 }
 
-# Named constants
 _CONSTS = {
     "pi": math.pi,
     "e": math.e,
@@ -50,7 +52,7 @@ def _to_decimal(value, ctx: Context = None):
         return value
     if isinstance(value, Fraction):
         return Decimal(value.numerator) / Decimal(value.denominator)
-    # ints and floats
+    # ints und floats
     return Decimal(str(value)) if not isinstance(value, float) else Decimal(repr(value))
 
 
@@ -58,7 +60,6 @@ def _to_fraction(value):
     if isinstance(value, Fraction):
         return value
     if isinstance(value, Decimal):
-        # Convert Decimal to Fraction using as_tuple and exponent
         tup = value.as_tuple()
         digits = 0
         for d in tup.digits:
@@ -89,13 +90,10 @@ def eval_expr(expr: str, mode: str = "float", precision: int | None = None):
         ctx.prec = int(precision)
 
     def convert_number(n):
-        # n is an int or float
         if mode == "float":
             return float(n)
         if mode == "fraction":
-            # Fraction accepts ints or floats
             return Fraction(n)
-        # decimal
         return _to_decimal(n, ctx)
 
     def convert_const(name):
@@ -114,54 +112,55 @@ def eval_expr(expr: str, mode: str = "float", precision: int | None = None):
         func = _MATH_FUNCS[name]
 
         def wrapper(*args):
-            # Validate/convert args based on mode
             if mode == "fraction":
-                # Only a small safe subset works in fraction mode
-                if name in ("abs", "max", "min", "pow"):
-                    fargs = tuple(_to_fraction(a) for a in args)
-                    # pow: if exponent is not integer, raise
-                    if name == "pow":
-                        base, exp = fargs
-                        if exp.denominator != 1:
-                            raise EvalError("pow mit nicht-ganzzahligem Exponenten in Fraction-Modus nicht erlaubt")
-                        return base ** int(exp)
-                    return getattr(__builtins__, name)(*fargs) if name in ("max", "min") else eval(name)(*fargs)
-                # other functions not supported in fraction mode
+                if name == "abs":
+                    return abs(_to_fraction(args[0]))
+                if name == "max":
+                    return max(_to_fraction(a) for a in args)
+                if name == "min":
+                    return min(_to_fraction(a) for a in args)
+                if name == "pow":
+                    base, exp = (_to_fraction(a) for a in args)
+                    if exp.denominator != 1:
+                        raise EvalError(
+                            "pow mit nicht-ganzzahligem Exponenten im Fraction-Modus nicht erlaubt"
+                        )
+                    return base ** int(exp)
                 raise EvalError(f"Funktion {name} nicht im Fraction-Modus unterstützt")
 
             if mode == "decimal":
-                # For Decimal mode: use Decimal-aware sqrt and pow where possible
                 if name == "sqrt":
-                    # use context sqrt
                     try:
                         return ctx.sqrt(args[0])
                     except Exception:
-                        # fallback to float
                         return _to_decimal(math.sqrt(float(args[0])), ctx)
                 if name in ("log", "ln"):
                     return _to_decimal(math.log(float(args[0])), ctx)
                 if name in ("sin", "cos", "tan"):
                     return _to_decimal(func(float(args[0])), ctx)
                 if name == "pow":
-                    # Decimal pow may fail for non-integer exponents
                     a, b = args
-                    # if exponent is integer, use **
                     if isinstance(b, Decimal) and b == b.to_integral_value():
                         return a ** int(b)
-                    # fallback via float
                     return _to_decimal(math.pow(float(a), float(b)), ctx)
                 if name in ("max", "min"):
-                    return type(args[0])(max(*[float(a) for a in args])) if False else max(args)
-                # default: call via float and convert
-                return _to_decimal(func(float(args[0])), ctx) if len(args) == 1 else _to_decimal(func(*[float(a) for a in args]), ctx)
+                    return max(args)
+                return (
+                    _to_decimal(func(float(args[0])), ctx)
+                    if len(args) == 1
+                    else _to_decimal(func(*[float(a) for a in args]), ctx)
+                )
 
             # float mode
-            return func(*[float(a) for a in args]) if name in ("sin", "cos", "tan", "log", "ln", "sqrt", "pow") else func(*args)
+            return (
+                func(*[float(a) for a in args])
+                if name in ("sin", "cos", "tan", "log", "ln", "sqrt", "pow")
+                else func(*args)
+            )
 
         return wrapper
 
     def _eval(node):
-        # Constants (py3.8+: ast.Constant, older: ast.Num)
         if isinstance(node, ast.Constant):
             if isinstance(node.value, (int, float)):
                 return convert_number(node.value)
@@ -181,9 +180,7 @@ def eval_expr(expr: str, mode: str = "float", precision: int | None = None):
             except ZeroDivisionError:
                 raise
             except Exception as e:
-                # Handle mixing types for Decimal/Fraction
                 if mode == "decimal":
-                    # try converting operands to Decimal
                     l = _to_decimal(left, ctx)
                     r = _to_decimal(right, ctx)
                     try:
@@ -207,7 +204,6 @@ def eval_expr(expr: str, mode: str = "float", precision: int | None = None):
             return OPS[op_type](val)
 
         if isinstance(node, ast.Call):
-            # Only allow simple function calls like fname(arg, ...)
             if not isinstance(node.func, ast.Name):
                 raise EvalError("Nur einfache Funktionsaufrufe erlaubt")
             fname = node.func.id
@@ -231,40 +227,153 @@ def eval_expr(expr: str, mode: str = "float", precision: int | None = None):
     return _eval(tree.body)
 
 
-def main():
-    parser = argparse.ArgumentParser(description="Sicherer Taschenrechner (AST-basiert)")
-    parser.add_argument("--mode", choices=("float", "decimal", "fraction"), default="float", help="numeric mode")
-    parser.add_argument("--precision", type=int, default=28, help="decimal precision (only for decimal mode)")
-    args = parser.parse_args()
+# -----------------------------
+# GUI-Teil
+# -----------------------------
 
-    mode = args.mode
-    precision = args.precision if mode == "decimal" else None
+class CalculatorGUI:
+    def __init__(self, root):
+        self.root = root
+        self.root.title("Sicherer Taschenrechner")
 
-    try:
-        import readline  # optional: improves interactive input
-    except Exception:
-        pass
+        # Fenster optisch etwas "handyhaft"
+        self.root.resizable(False, False)
+        self.root.configure(bg="#202124")
 
-    while True:
-        try:
-            i = input(f"[{mode}] Rechnung (oder Enter zum Beenden): ")
-        except (EOFError, KeyboardInterrupt):
-            print()
-            break
-        if not i.strip():
-            break
-        try:
-            res = eval_expr(i, mode=mode, precision=precision)
-        except DivisionByZero:
-            print("Fehler: Division durch Null")
-        except ZeroDivisionError:
-            print("Fehler: Division durch Null")
-        except EvalError as e:
-            print(f"ungültig: {e}")
-        except Exception:
-            print("ungültig")
+        self.mode_var = tk.StringVar(value="float")
+        self.precision = 28
+
+        # Display
+        self.display = tk.Entry(
+            root,
+            font=("SF Pro Text", 24),
+            bd=0,
+            bg="#000000",
+            fg="#00FF7F",
+            insertbackground="#00FF7F",
+            justify="right",
+        )
+        self.display.grid(row=0, column=0, columnspan=5, padx=10, pady=10, sticky="nsew", ipady=10)
+
+        # Buttons definieren
+        # text, row, col, colspan (optional), style
+        buttons = [
+            ("C", 1, 0), ("←", 1, 1), ("(", 1, 2), (")", 1, 3), ("/", 1, 4),
+            ("sin", 2, 0), ("cos", 2, 1), ("tan", 2, 2), ("//", 2, 3), ("%", 2, 4),
+            ("7", 3, 0), ("8", 3, 1), ("9", 3, 2), ("*", 3, 3), ("^", 3, 4),
+            ("4", 4, 0), ("5", 4, 1), ("6", 4, 2), ("-", 4, 3), ("sqrt", 4, 4),
+            ("1", 5, 0), ("2", 5, 1), ("3", 5, 2), ("+", 5, 3), ("log", 5, 4),
+            ("0", 6, 0), (".", 6, 1), ("pi", 6, 2), ("e", 6, 3), ("=", 6, 4),
+        ]
+
+        for (text, r, c) in buttons:
+            self._create_button(text, r, c)
+
+        # Modus-Auswahl (float/decimal/fraction)
+        mode_frame = tk.Frame(root, bg="#202124")
+        mode_frame.grid(row=7, column=0, columnspan=5, pady=(5, 10))
+
+        tk.Label(mode_frame, text="Modus:", fg="white", bg="#202124").pack(side="left")
+
+        for m in ("float", "decimal", "fraction"):
+            rb = tk.Radiobutton(
+                mode_frame,
+                text=m,
+                variable=self.mode_var,
+                value=m,
+                fg="white",
+                bg="#202124",
+                selectcolor="#202124",
+                activebackground="#202124",
+                activeforeground="white",
+                indicatoron=False,
+                width=8,
+                relief="ridge",
+                bd=1,
+                padx=2,
+                pady=2,
+            )
+            rb.pack(side="left", padx=2)
+
+        # Keyboard-Events
+        self.root.bind("<Return>", lambda e: self.calculate())
+        self.root.bind("<KP_Enter>", lambda e: self.calculate())
+        self.root.bind("<BackSpace>", lambda e: self.backspace())
+
+    def _create_button(self, text, row, col):
+        cmd = None
+        if text == "C":
+            cmd = self.clear
+            bg = "#8B0000"
+        elif text == "←":
+            cmd = self.backspace
+            bg = "#444444"
+        elif text == "=":
+            cmd = self.calculate
+            bg = "#1E90FF"
         else:
-            print(res)
+            cmd = lambda t=text: self.insert_text(t)
+            bg = "#333333"
+
+        button = tk.Button(
+            self.root,
+            text=text,
+            command=cmd,
+            font=("SF Pro Text", 16),
+            bg=bg,
+            fg="white",
+            activebackground="#555555",
+            activeforeground="white",
+            bd=0,
+            relief="flat",
+            width=4,
+            height=2,
+        )
+        button.grid(row=row, column=col, padx=4, pady=4, sticky="nsew")
+
+    def insert_text(self, text):
+        # ^ auf ** mappen, damit dein AST-Pow funktioniert
+        if text == "^":
+            text = "**"
+        pos = self.display.index(tk.INSERT)
+        self.display.insert(pos, text)
+
+    def clear(self):
+        self.display.delete(0, tk.END)
+
+    def backspace(self):
+        pos = self.display.index(tk.INSERT)
+        if pos > 0:
+            self.display.delete(pos - 1)
+
+    def calculate(self):
+        expr = self.display.get().strip()
+        if not expr:
+            return
+        mode = self.mode_var.get()
+        try:
+            res = eval_expr(expr, mode=mode, precision=28)
+        except DivisionByZero:
+            self.display.delete(0, tk.END)
+            self.display.insert(0, "Fehler: Division durch Null")
+        except ZeroDivisionError:
+            self.display.delete(0, tk.END)
+            self.display.insert(0, "Fehler: Division durch Null")
+        except EvalError as e:
+            self.display.delete(0, tk.END)
+            self.display.insert(0, f"ungültig: {e}")
+        except Exception:
+            self.display.delete(0, tk.END)
+            self.display.insert(0, "ungültig")
+        else:
+            self.display.delete(0, tk.END)
+            self.display.insert(0, str(res))
+
+
+def main():
+    root = tk.Tk()
+    CalculatorGUI(root)
+    root.mainloop()
 
 
 if __name__ == "__main__":
