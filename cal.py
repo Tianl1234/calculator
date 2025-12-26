@@ -144,7 +144,6 @@ def eval_expr(expr: str, mode: str = "float", precision: int | None = None):
                 return convert_number(node.value)
             raise EvalError("Nur Zahlen als Konstanten erlaubt")
 
-        # älteres Python: ast.Num
         if sys.version_info < (3, 8) and isinstance(node, ast.Num):
             return convert_number(node.n)
 
@@ -195,10 +194,6 @@ def eval_expr(expr: str, mode: str = "float", precision: int | None = None):
 
     return _eval(tree.body)
 
-# ============================================================
-#  AUTOMATISCHE MODUS-ERKENNUNG
-# ============================================================
-
 def auto_detect_mode(expr: str) -> str:
     expr = expr.replace(" ", "")
 
@@ -223,50 +218,14 @@ def auto_detect_mode(expr: str) -> str:
 
     return "float"
 
-# ============================================================
-#  THEMES (ONEUI CLASSIC – SOFT PASTEL + DARK MODE)
-# ============================================================
-
-LIGHT_THEME = {
-    "bg_main": "#F5F5F7",
-    "bg_display": "#FFFFFF",
-    "fg_display": "#333333",
-    "fg_display_secondary": "#888888",
-    "btn_number_bg": "#F2F2F2",
-    "btn_op_bg": "#A7C7FF",
-    "btn_eq_bg": "#7BE8C9",
-    "btn_clear_bg": "#FF8A80",
-    "btn_func_bg": "#E0E7FF",
-    "btn_text": "#333333",
-    "btn_text_inverse": "#FFFFFF",
-    "mode_label_fg": "#555555",
-}
-
-DARK_THEME = {
-    "bg_main": "#111111",
-    "bg_display": "#000000",
-    "fg_display": "#E0E0E0",
-    "fg_display_secondary": "#BBBBBB",
-    "btn_number_bg": "#2C2C2C",
-    "btn_op_bg": "#4A90E2",
-    "btn_eq_bg": "#00C853",
-    "btn_clear_bg": "#D32F2F",
-    "btn_func_bg": "#3949AB",
-    "btn_text": "#FFFFFF",
-    "btn_text_inverse": "#FFFFFF",
-    "mode_label_fg": "#BBBBBB",
-}
 
 # ============================================================
-#  GUI MIT HISTORY, THEME-TOGGLE, ONEUI STYLE
+#  MINI‑OS‑KOMPATIBLE VERSION DES TASCHENRECHNERS
 # ============================================================
 
-class CalculatorGUI:
-    def __init__(self, root):
-        self.root = root
-        self.root.title("Sicherer Taschenrechner")
-        self.root.resizable(False, False)
-
+class CalculatorApp:
+    def __init__(self, parent):
+        self.root = parent  # kein Tk(), sondern Frame im Mini‑OS
         self.theme = "light"
         self.theme_data = LIGHT_THEME
 
@@ -279,14 +238,10 @@ class CalculatorGUI:
         self._build_layout()
         self.apply_theme()
 
-        self.root.bind("<Return>", lambda e: self.calculate())
-        self.root.bind("<KP_Enter>", lambda e: self.calculate())
-        self.root.bind("<BackSpace>", lambda e: self.backspace())
-
     def _build_layout(self):
-        self.root.configure(bg=self.theme_data["bg_main"])
+        t = self.theme_data
 
-        top_frame = tk.Frame(self.root, bg=self.theme_data["bg_main"])
+        top_frame = tk.Frame(self.root, bg=t["bg_main"])
         top_frame.grid(row=0, column=0, columnspan=4, sticky="nsew", padx=10, pady=(10, 0))
 
         self.display = tk.Entry(
@@ -391,7 +346,6 @@ class CalculatorGUI:
     def apply_theme(self):
         t = self.theme_data
 
-        self.root.configure(bg=t["bg_main"])
         for w in self.widgets_misc:
             if isinstance(w, tk.Frame):
                 w.configure(bg=t["bg_main"])
@@ -536,27 +490,4 @@ class CalculatorGUI:
         if self.history_window is None or not tk.Toplevel.winfo_exists(self.history_window):
             return
         self.history_listbox.delete(0, tk.END)
-        for expr, res, mode in reversed(self.history):
-            self.history_listbox.insert(tk.END, f"[{mode}] {expr} = {res}")
-
-    def on_history_double_click(self, event):
-        selection = self.history_listbox.curselection()
-        if not selection:
-            return
-        index = len(self.history) - 1 - selection[0]
-        expr, res, mode = self.history[index]
-        self.display.delete(0, tk.END)
-        self.display.insert(0, expr)
-        self.mode_label.config(text=f"Modus: {mode}")
-
-# ============================================================
-#  START
-# ============================================================
-
-def main():
-    root = tk.Tk()
-    CalculatorGUI(root)
-    root.mainloop()
-
-if __name__ == "__main__":
-    main()
+        for expr, res, mode in
