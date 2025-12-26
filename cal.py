@@ -490,4 +490,6 @@ class CalculatorApp:
         if self.history_window is None or not tk.Toplevel.winfo_exists(self.history_window):
             return
         self.history_listbox.delete(0, tk.END)
-        for expr, res, mode in
+        for expr, res, mode in self.history:
+    self.history_listbox.insert(tk.END, f"[{mode}] {expr} = {res}")
+
