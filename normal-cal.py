@@ -1,562 +1,260 @@
 import ast
 import operator
 import math
-import sys
-from decimal import Decimal, getcontext, Context, DivisionByZero
+import re
+import tkinter as tk
+from tkinter import ttk, messagebox
+from decimal import Decimal, getcontext, DivisionByZero
 from fractions import Fraction
 
-import tkinter as tk
-from tkinter import ttk
+# ============================================================
+#  KONFIGURATION & DESIGN
+# ============================================================
+
+THEME = {
+    "bg_main": "#121212",
+    "bg_display": "#1e1e1e",
+    "fg_display": "#ffffff",
+    "btn_bg": "#2c2c2c",
+    "btn_fg": "#ffffff",
+    "btn_op_bg": "#ff9800",
+    "btn_op_fg": "#000000",
+    "btn_eq_bg": "#4caf50",
+    "btn_eq_fg": "#ffffff",
+    "btn_sci_bg": "#2196f3",
+    "btn_sci_fg": "#ffffff",
+    "highlight_bracket": "#3d3d3d"
+}
 
 # ============================================================
 #  SICHERER AST-EVALUATOR
 # ============================================================
 
-OPS = {
-    ast.Add: operator.add,
-    ast.Sub: operator.sub,
-    ast.Mult: operator.mul,
-    ast.Div: operator.truediv,
-    ast.FloorDiv: operator.floordiv,
-    ast.Mod: operator.mod,
-    ast.Pow: operator.pow,
-    ast.USub: operator.neg,
-    ast.UAdd: lambda x: x,
-}
+class SafeEvaluator:
+    OPS = {
+        ast.Add: operator.add, ast.Sub: operator.sub,
+        ast.Mult: operator.mul, ast.Div: operator.truediv,
+        ast.FloorDiv: operator.floordiv, ast.Mod: operator.mod,
+        ast.Pow: operator.pow, ast.USub: operator.neg,
+        ast.UAdd: lambda x: x,
+    }
 
-_MATH_FUNCS = {
-    "sin": math.sin,
-    "cos": math.cos,
-    "tan": math.tan,
-    "log": math.log,
-    "ln": lambda x: math.log(x),
-    "sqrt": math.sqrt,
-    "abs": abs,
-    "max": max,
-    "min": min,
-    "pow": math.pow,
-}
+    _MATH_FUNCS = {
+        "sin": math.sin, "cos": math.cos, "tan": math.tan,
+        "log": math.log, "ln": math.log, "sqrt": math.sqrt,
+        "abs": abs, "pow": math.pow,
+    }
 
-_CONSTS = {
-    "pi": math.pi,
-    "e": math.e,
-}
+    _CONSTS = {"pi": math.pi, "e": math.e}
 
-class EvalError(ValueError):
-    pass
+    def __init__(self, mode="float", precision=28, last_result=None):
+        self.mode = mode
+        getcontext().prec = precision
+        self.last_result = last_result
 
-def _to_decimal(value, ctx: Context = None):
-    if isinstance(value, Decimal):
-        return value
-    if isinstance(value, Fraction):
-        return Decimal(value.numerator) / Decimal(value.denominator)
-    return Decimal(str(value)) if not isinstance(value, float) else Decimal(repr(value))
+    def _preprocess(self, expr):
+        expr = expr.replace("π", "pi").replace("^", "**")
+        # Implizite Multiplikation (z.B. 2ans -> 2*ans, 2(3) -> 2*(3))
+        expr = re.sub(r'(\d)\s*(ans|pi|e|sin|cos|tan|log|ln|sqrt|\()', r'\1*\2', expr)
+        expr = re.sub(r'(ans|pi|e|\))\s*(\d|\()', r'\1*\2', expr)
+        return expr
 
-def _to_fraction(value):
-    if isinstance(value, Fraction):
-        return value
-    if isinstance(value, Decimal):
-        tup = value.as_tuple()
-        digits = 0
-        for d in tup.digits:
-            digits = digits * 10 + d
-        exp = tup.exponent
-        if exp >= 0:
-            return Fraction(digits * (10 ** exp))
-        else:
-            return Fraction(digits, 10 ** (-exp))
-    return Fraction(value)
-
-def eval_expr(expr: str, mode: str = "float", precision: int | None = None):
-    if mode not in ("float", "decimal", "fraction"):
-        raise EvalError("Unbekannter Modus")
-
-    ctx = None
-    if mode == "decimal":
-        if precision is None:
-            precision = 28
-        ctx = getcontext().copy()
-        ctx.prec = int(precision)
-
-    def convert_number(n):
-        if mode == "float":
-            return float(n)
-        if mode == "fraction":
-            return Fraction(n)
-        return _to_decimal(n, ctx)
-
-    def convert_const(name):
-        if name not in _CONSTS:
-            raise EvalError(f"Unbekannter Name: {name}")
-        val = _CONSTS[name]
-        if mode == "float":
-            return float(val)
-        if mode == "fraction":
-            return Fraction(val)
-        return _to_decimal(val, ctx)
-
-    def make_function(name):
-        if name not in _MATH_FUNCS:
-            raise EvalError(f"Unbekannte Funktion: {name}")
-        func = _MATH_FUNCS[name]
-
-        def wrapper(*args):
-            if mode == "fraction":
-                if name == "abs":
-                    return abs(_to_fraction(args[0]))
-                if name == "max":
-                    return max(_to_fraction(a) for a in args)
-                if name == "min":
-                    return min(_to_fraction(a) for a in args)
-                if name == "pow":
-                    base, exp = (_to_fraction(a) for a in args)
-                    if exp.denominator != 1:
-                        raise EvalError("pow mit nicht-ganzzahligem Exponenten im Fraction-Modus nicht erlaubt")
-                    return base ** int(exp)
-                raise EvalError(f"Funktion {name} nicht im Fraction-Modus unterstützt")
-
-            if mode == "decimal":
-                if name == "sqrt":
-                    try:
-                        return ctx.sqrt(args[0])
-                    except Exception:
-                        return _to_decimal(math.sqrt(float(args[0])), ctx)
-                if name in ("log", "ln"):
-                    return _to_decimal(math.log(float(args[0])), ctx)
-                if name in ("sin", "cos", "tan"):
-                    return _to_decimal(func(float(args[0])), ctx)
-                if name == "pow":
-                    a, b = args
-                    if isinstance(b, Decimal) and b == b.to_integral_value():
-                        return a ** int(b)
-                    return _to_decimal(math.pow(float(a), float(b)), ctx)
-                if name in ("max", "min"):
-                    return max(args)
-                return _to_decimal(func(float(args[0])), ctx)
-
-            return func(*[float(a) for a in args])
-
-        return wrapper
-
-    def _eval(node):
-        if isinstance(node, ast.Constant):
-            if isinstance(node.value, (int, float)):
-                return convert_number(node.value)
-            raise EvalError("Nur Zahlen als Konstanten erlaubt")
-
-        # älteres Python: ast.Num
-        if sys.version_info < (3, 8) and isinstance(node, ast.Num):
-            return convert_number(node.n)
-
-        if isinstance(node, ast.BinOp):
-            op_type = type(node.op)
-            if op_type not in OPS:
-                raise EvalError("Nicht unterstützter Operator")
-            left = _eval(node.left)
-            right = _eval(node.right)
-            func = OPS[op_type]
-            try:
-                return func(left, right)
-            except ZeroDivisionError:
-                raise
-            except Exception as e:
-                if mode == "decimal":
-                    return func(_to_decimal(left, ctx), _to_decimal(right, ctx))
-                if mode == "fraction":
-                    return func(_to_fraction(left), _to_fraction(right))
-                raise EvalError(str(e))
-
-        if isinstance(node, ast.UnaryOp):
-            op_type = type(node.op)
-            if op_type not in OPS:
-                raise EvalError("Nicht unterstützter Unary-Operator")
-            return OPS[op_type](_eval(node.operand))
-
-        if isinstance(node, ast.Call):
-            if not isinstance(node.func, ast.Name):
-                raise EvalError("Nur einfache Funktionsaufrufe erlaubt")
-            fname = node.func.id
-            func = make_function(fname)
-            args = tuple(_eval(a) for a in node.args)
-            return func(*args)
-
-        if isinstance(node, ast.Name):
-            return convert_const(node.id)
-
-        raise EvalError("Ungültiger Ausdruck")
-
-    try:
-        tree = ast.parse(expr, mode="eval")
-    except SyntaxError:
-        raise EvalError("Syntaxfehler")
-
-    if not isinstance(tree, ast.Expression):
-        raise EvalError("Nur Ausdrücke erlaubt")
-
-    return _eval(tree.body)
-
-# ============================================================
-#  AUTOMATISCHE MODUS-ERKENNUNG
-# ============================================================
-
-def auto_detect_mode(expr: str) -> str:
-    expr = expr.replace(" ", "")
-
-    if "." in expr:
-        return "decimal"
-
-    float_funcs = ("sin", "cos", "tan", "log", "ln", "sqrt")
-    if any(f in expr for f in float_funcs):
-        return "decimal"
-
-    if "/" in expr and "//" not in expr:
-        parts = expr.split("/")
+    def evaluate(self, expr):
+        expr = self._preprocess(expr)
+        if not expr.strip(): return None
         try:
-            int(parts[0][-1])
-            int(parts[1][0])
-            return "fraction"
-        except Exception:
-            pass
+            tree = ast.parse(expr, mode="eval")
+            return self._eval_node(tree.body)
+        except SyntaxError:
+            raise ValueError("Syntaxfehler")
 
-    if all(ch.isdigit() or ch in "+-*/() " for ch in expr):
-        return "fraction"
+    def _eval_node(self, node):
+        if isinstance(node, ast.Constant):
+            return self._convert(node.value)
+        if isinstance(node, ast.Name):
+            if node.id == "ans":
+                if self.last_result is None: raise ValueError("Kein 'ans' verfügbar")
+                return self.last_result
+            if node.id in self._CONSTS: return self._convert(self._CONSTS[node.id])
+            raise ValueError(f"Unbekannt: {node.id}")
+        if isinstance(node, ast.BinOp):
+            left, right = self._eval_node(node.left), self._eval_node(node.right)
+            return self.OPS[type(node.op)](left, right)
+        if isinstance(node, ast.UnaryOp):
+            return self.OPS[type(node.op)](self._eval_node(node.operand))
+        if isinstance(node, ast.Call):
+            if not isinstance(node.func, ast.Name): raise ValueError("Fehler")
+            args = [float(self._eval_node(a)) for a in node.args]
+            res = self._MATH_FUNCS[node.func.id](*args)
+            return self._convert(res)
+        raise ValueError("Struktur nicht unterstützt")
 
-    return "float"
-
-# ============================================================
-#  THEMES (ONEUI CLASSIC – SOFT PASTEL + DARK MODE)
-# ============================================================
-
-LIGHT_THEME = {
-    "bg_main": "#F5F5F7",
-    "bg_display": "#FFFFFF",
-    "fg_display": "#333333",
-    "fg_display_secondary": "#888888",
-    "btn_number_bg": "#F2F2F2",
-    "btn_op_bg": "#A7C7FF",
-    "btn_eq_bg": "#7BE8C9",
-    "btn_clear_bg": "#FF8A80",
-    "btn_func_bg": "#E0E7FF",
-    "btn_text": "#333333",
-    "btn_text_inverse": "#FFFFFF",
-    "mode_label_fg": "#555555",
-}
-
-DARK_THEME = {
-    "bg_main": "#111111",
-    "bg_display": "#000000",
-    "fg_display": "#E0E0E0",
-    "fg_display_secondary": "#BBBBBB",
-    "btn_number_bg": "#2C2C2C",
-    "btn_op_bg": "#4A90E2",
-    "btn_eq_bg": "#00C853",
-    "btn_clear_bg": "#D32F2F",
-    "btn_func_bg": "#3949AB",
-    "btn_text": "#FFFFFF",
-    "btn_text_inverse": "#FFFFFF",
-    "mode_label_fg": "#BBBBBB",
-}
+    def _convert(self, val):
+        if self.mode == "decimal": return Decimal(str(val)) if not isinstance(val, float) else Decimal(repr(val))
+        if self.mode == "fraction": return Fraction(val).limit_denominator()
+        return float(val)
 
 # ============================================================
-#  GUI MIT HISTORY, THEME-TOGGLE, ONEUI STYLE
+#  GUI KLASSE
 # ============================================================
 
 class CalculatorGUI:
     def __init__(self, root):
         self.root = root
-        self.root.title("Sicherer Taschenrechner")
-        self.root.resizable(False, False)
-
-        self.theme = "light"
-        self.theme_data = LIGHT_THEME
-
+        self.root.title("Pro-Calculator 2026")
+        self.last_result = None
         self.history = []
-        self.history_window = None
+        self.scientific_visible = False
 
-        self.widgets_buttons = []
-        self.widgets_misc = []
+        self._setup_ui()
+        self._bind_events()
 
-        self._build_layout()
-        self.apply_theme()
+    def _setup_ui(self):
+        self.root.configure(bg=THEME["bg_main"])
+        
+        # Obere Status-Leiste
+        top_bar = tk.Frame(self.root, bg=THEME["bg_main"])
+        top_bar.pack(fill="x", padx=10, pady=(10, 0))
+        
+        self.mode_label = tk.Label(top_bar, text="Modus: Auto", bg=THEME["bg_main"], fg="#888", font=("Arial", 9))
+        self.mode_label.pack(side="left")
 
-        self.root.bind("<Return>", lambda e: self.calculate())
-        self.root.bind("<KP_Enter>", lambda e: self.calculate())
-        self.root.bind("<BackSpace>", lambda e: self.backspace())
+        history_btn = tk.Button(top_bar, text="📜 Verlauf", bg=THEME["bg_main"], fg="#888", bd=0, 
+                                cursor="hand2", command=self.show_history)
+        history_btn.pack(side="right")
 
-    def _build_layout(self):
-        self.root.configure(bg=self.theme_data["bg_main"])
+        # Display
+        self.display = tk.Entry(self.root, font=("Segoe UI", 32), bd=0, justify="right",
+                                bg=THEME["bg_display"], fg=THEME["fg_display"], 
+                                insertbackground="white", highlightthickness=0)
+        self.display.pack(fill="x", padx=10, pady=10, ipady=10)
 
-        top_frame = tk.Frame(self.root, bg=self.theme_data["bg_main"])
-        top_frame.grid(row=0, column=0, columnspan=4, sticky="nsew", padx=10, pady=(10, 0))
+        # Button Container
+        self.container = tk.Frame(self.root, bg=THEME["bg_main"])
+        self.container.pack(fill="both", expand=True, padx=5, pady=5)
 
-        self.display = tk.Entry(
-            top_frame,
-            font=("Helvetica", 30),
-            bd=0,
-            relief="flat",
-            justify="right",
-        )
-        self.display.grid(row=0, column=0, columnspan=3, sticky="nsew", pady=(0, 5))
+        self.main_frame = tk.Frame(self.container, bg=THEME["bg_main"])
+        self.main_frame.pack(side="left", fill="both", expand=True)
 
-        self.theme_button = tk.Button(
-            top_frame,
-            text="☀",
-            command=self.toggle_theme,
-            bd=0,
-            relief="flat",
-            font=("Helvetica", 16),
-            width=3,
-        )
-        self.theme_button.grid(row=0, column=3, sticky="ne", padx=(5, 0))
+        self.sci_frame = tk.Frame(self.container, bg=THEME["bg_main"])
 
-        self.mode_label = tk.Label(
-            top_frame,
-            text="Modus: auto",
-            anchor="w",
-            font=("Helvetica", 10),
-        )
-        self.mode_label.grid(row=1, column=0, columnspan=2, sticky="w", pady=(0, 10))
+        self._create_main_grid()
+        self._create_sci_grid()
 
-        self.history_button = tk.Button(
-            top_frame,
-            text="🕘 Verlauf",
-            command=self.open_history_window,
-            bd=0,
-            relief="flat",
-            font=("Helvetica", 10),
-        )
-        self.history_button.grid(row=1, column=2, columnspan=2, sticky="e")
-
-        self.widgets_misc.extend([top_frame, self.display, self.theme_button,
-                                  self.mode_label, self.history_button])
-
-        btn_cfg = {
-            "font": ("Helvetica", 20),
-            "bd": 0,
-            "relief": "flat",
-            "width": 4,
-            "height": 2,
-            "borderwidth": 0,
-        }
-
-        buttons = [
-            ("C", 1, 0, "clear"),
-            ("←", 1, 1, "func"),
-            ("(", 1, 2, "func"),
-            (")", 1, 3, "func"),
-
-            ("7", 2, 0, "num"),
-            ("8", 2, 1, "num"),
-            ("9", 2, 2, "num"),
-            ("/", 2, 3, "op"),
-
-            ("4", 3, 0, "num"),
-            ("5", 3, 1, "num"),
-            ("6", 3, 2, "num"),
-            ("*", 3, 3, "op"),
-
-            ("1", 4, 0, "num"),
-            ("2", 4, 1, "num"),
-            ("3", 4, 2, "num"),
-            ("-", 4, 3, "op"),
-
-            ("0", 5, 0, "num"),
-            (".", 5, 1, "num"),
-            ("+", 5, 2, "op"),
-            ("=", 5, 3, "eq"),
+    def _create_main_grid(self):
+        btns = [
+            ('C', 0, 0, THEME["btn_op_bg"]), ('←', 0, 1, THEME["btn_op_bg"]), ('(', 0, 2, THEME["btn_op_bg"]), (')', 0, 3, THEME["btn_op_bg"]),
+            ('7', 1, 0, THEME["btn_bg"]), ('8', 1, 1, THEME["btn_bg"]), ('9', 1, 2, THEME["btn_bg"]), ('/', 1, 3, THEME["btn_op_bg"]),
+            ('4', 2, 0, THEME["btn_bg"]), ('5', 2, 1, THEME["btn_bg"]), ('6', 2, 2, THEME["btn_bg"]), ('*', 2, 3, THEME["btn_op_bg"]),
+            ('1', 3, 0, THEME["btn_bg"]), ('2', 3, 1, THEME["btn_bg"]), ('3', 3, 2, THEME["btn_bg"]), ('-', 3, 3, THEME["btn_op_bg"]),
+            ('0', 4, 0, THEME["btn_bg"]), ('.', 4, 1, THEME["btn_bg"]), ('ans', 4, 2, THEME["btn_bg"]), ('+', 4, 3, THEME["btn_op_bg"]),
+            ('=', 5, 0, THEME["btn_eq_bg"]), ('Sci', 5, 3, THEME["btn_sci_bg"])
         ]
-
-        for (text, r, c, kind) in buttons:
-            self._create_button(text, r, c, kind, btn_cfg)
-
-        for r in range(1, 6):
-            self.root.grid_rowconfigure(r, weight=1)
-        for c in range(4):
-            self.root.grid_columnconfigure(c, weight=1)
-
-    def _create_button(self, text, row, col, kind, cfg):
-        if text == "C":
-            cmd = self.clear
-        elif text == "←":
-            cmd = self.backspace
-        elif text == "=":
-            cmd = self.calculate
-        else:
-            cmd = lambda t=text: self.insert_text(t)
-
-        btn = tk.Button(self.root, text=text, command=cmd, **cfg)
-        btn.grid(row=row, column=col, padx=6, pady=6, sticky="nsew")
-        self.widgets_buttons.append((btn, kind))
-
-    def apply_theme(self):
-        t = self.theme_data
-
-        self.root.configure(bg=t["bg_main"])
-        for w in self.widgets_misc:
-            if isinstance(w, tk.Frame):
-                w.configure(bg=t["bg_main"])
-            elif isinstance(w, tk.Entry):
-                w.configure(bg=t["bg_display"], fg=t["fg_display"], insertbackground=t["fg_display"])
-            elif isinstance(w, tk.Label):
-                if w is self.mode_label:
-                    w.configure(bg=t["bg_main"], fg=t["mode_label_fg"])
-                else:
-                    w.configure(bg=t["bg_main"], fg=t["fg_display_secondary"])
-            elif isinstance(w, tk.Button):
-                if w is self.theme_button:
-                    w.configure(
-                        bg=t["bg_main"],
-                        fg=t["fg_display"],
-                        activebackground=t["bg_main"],
-                        activeforeground=t["fg_display"],
-                    )
-                elif w is self.history_button:
-                    w.configure(
-                        bg=t["bg_main"],
-                        fg=t["fg_display_secondary"],
-                        activebackground=t["bg_main"],
-                        activeforeground=t["fg_display_secondary"],
-                    )
-
-        for btn, kind in self.widgets_buttons:
-            if kind == "num":
-                bg = t["btn_number_bg"]
-                fg = t["btn_text"]
-            elif kind == "op":
-                bg = t["btn_op_bg"]
-                fg = t["btn_text"]
-            elif kind == "eq":
-                bg = t["btn_eq_bg"]
-                fg = t["btn_text_inverse"]
-            elif kind == "clear":
-                bg = t["btn_clear_bg"]
-                fg = t["btn_text_inverse"]
+        for (text, r, c, color) in btns:
+            if text == '=':
+                cmd = self.calculate
+                b = tk.Button(self.main_frame, text=text, font=("Arial", 14, "bold"), bg=color, fg="white", bd=0, command=cmd)
+                b.grid(row=r, column=c, columnspan=3, padx=2, pady=2, sticky="nsew")
             else:
-                bg = t["btn_func_bg"]
-                fg = t["btn_text"]
+                cmd = self.toggle_sci if text == 'Sci' else lambda t=text: self._handle_btn(t)
+                b = tk.Button(self.main_frame, text=text, width=5, height=2, font=("Arial", 12), bg=color, fg="white", bd=0, command=cmd)
+                b.grid(row=r, column=c, padx=2, pady=2, sticky="nsew")
 
-            btn.configure(
-                bg=bg,
-                fg=fg,
-                activebackground=bg,
-                activeforeground=fg,
-            )
+        for i in range(4): self.main_frame.columnconfigure(i, weight=1)
+        for i in range(6): self.main_frame.rowconfigure(i, weight=1)
 
-        if self.history_window is not None and tk.Toplevel.winfo_exists(self.history_window):
-            self._apply_theme_to_history()
+    def _create_sci_grid(self):
+        sci_btns = [('sin', 0, 0), ('cos', 0, 1), ('tan', 1, 0), ('sqrt', 1, 1),
+                    ('log', 2, 0), ('ln', 2, 1), ('pi', 3, 0), ('e', 3, 1)]
+        for (text, r, c) in sci_btns:
+            b = tk.Button(self.sci_frame, text=text, width=6, height=2, font=("Arial", 11),
+                          bg=THEME["btn_sci_bg"], fg="white", bd=0, 
+                          command=lambda t=text: self.display.insert(tk.INSERT, t+"("))
+            b.grid(row=r, column=c, padx=2, pady=2, sticky="nsew")
 
-        self.theme_button.configure(text="☀" if self.theme == "light" else "🌙")
+    def _handle_btn(self, text):
+        if text == 'C': self.display.delete(0, tk.END)
+        elif text == '←': self.display.delete(self.display.index(tk.INSERT)-1)
+        else: self.display.insert(tk.INSERT, text)
+        self._highlight_brackets()
 
-    def toggle_theme(self):
-        self.theme = "dark" if self.theme == "light" else "light"
-        self.theme_data = DARK_THEME if self.theme == "dark" else LIGHT_THEME
-        self.apply_theme()
-
-    def insert_text(self, text):
-        if text == "^":
-            text = "**"
-        pos = self.display.index(tk.INSERT)
-        self.display.insert(pos, text)
-
-    def clear(self):
-        self.display.delete(0, tk.END)
-        self.mode_label.config(text="Modus: auto")
-
-    def backspace(self):
-        pos = self.display.index(tk.INSERT)
-        if pos > 0:
-            self.display.delete(pos - 1)
+    def toggle_sci(self):
+        if self.scientific_visible:
+            self.sci_frame.pack_forget()
+        else:
+            self.sci_frame.pack(side="right", padx=5, pady=5, fill="both")
+        self.scientific_visible = not self.scientific_visible
 
     def calculate(self):
-        expr = self.display.get().strip()
-        if not expr:
-            return
-
-        mode = auto_detect_mode(expr)
-        self.mode_label.config(text=f"Modus: {mode}")
-
+        expr = self.display.get()
+        if not expr: return
+        mode = "decimal" if any(x in expr for x in ".(sinπcoslogsqrt") else "fraction"
+        self.mode_label.config(text=f"Modus: {mode.capitalize()}")
+        
+        eval_engine = SafeEvaluator(mode=mode, last_result=self.last_result)
         try:
-            res = eval_expr(expr, mode=mode, precision=28)
-        except (DivisionByZero, ZeroDivisionError):
+            res = eval_engine.evaluate(expr)
+            if isinstance(res, Fraction): out = f"{res.numerator}/{res.denominator}"
+            elif isinstance(res, Decimal): out = format(res.normalize(), "g")
+            else: out = f"{res:.10g}"
+            
+            self.history.append(f"{expr} = {out}")
+            self.last_result = res
             self.display.delete(0, tk.END)
-            self.display.insert(0, "Fehler: Division durch Null")
-        except EvalError as e:
-            self.display.delete(0, tk.END)
-            self.display.insert(0, f"ungültig: {e}")
-        except Exception:
-            self.display.delete(0, tk.END)
-            self.display.insert(0, "ungültig")
-        else:
-            result_str = str(res)
-            self.history.append((expr, result_str, mode))
-            self.update_history_listbox()
+            self.display.insert(0, out)
+        except Exception as e:
+            messagebox.showerror("Mathematik-Fehler", str(e))
 
-            self.display.delete(0, tk.END)
-            self.display.insert(0, result_str)
+    # ================== ZUSATZFUNKTIONEN ==================
 
-    # ---------------- HISTORY ----------------
+    def _bind_events(self):
+        self.display.bind("<KeyRelease>", self._highlight_brackets)
+        self.root.bind("<Return>", lambda e: self.calculate())
 
-    def open_history_window(self):
-        if self.history_window is not None and tk.Toplevel.winfo_exists(self.history_window):
-            self.history_window.lift()
-            return
+    def _highlight_brackets(self, event=None):
+        text = self.display.get()
+        pos = self.display.index(tk.INSERT)
+        self.display.config(bg=THEME["bg_display"])
+        
+        if pos > 0 and pos <= len(text):
+            char = text[pos-1]
+            match_pos = None
+            if char == ")": match_pos = self._find_match(text, pos-1, -1, "(", ")")
+            elif char == "(": match_pos = self._find_match(text, pos-1, 1, ")", "(")
+            
+            if match_pos is not None:
+                self.display.config(bg=THEME["highlight_bracket"])
+                self.root.after(250, lambda: self.display.config(bg=THEME["bg_display"]))
 
-        self.history_window = tk.Toplevel(self.root)
-        self.history_window.title("Verlauf")
-        self.history_window.resizable(False, False)
+    def _find_match(self, text, start, step, target, other):
+        count = 0
+        for i in range(start, -1 if step == -1 else len(text), step):
+            if text[i] == other: count += 1
+            elif text[i] == target: count -= 1
+            if count == 0: return i
+        return None
 
-        self.history_listbox = tk.Listbox(self.history_window, font=("Helvetica", 11), height=15, width=40)
-        self.history_listbox.pack(side="left", fill="both", expand=True)
-
-        scrollbar = tk.Scrollbar(self.history_window, command=self.history_listbox.yview)
-        scrollbar.pack(side="right", fill="y")
-        self.history_listbox.config(yscrollcommand=scrollbar.set)
-
-        self.history_listbox.bind("<Double-Button-1>", self.on_history_double_click)
-
-        self._apply_theme_to_history()
-        self.update_history_listbox()
-
-    def _apply_theme_to_history(self):
-        if self.history_window is None:
-            return
-        t = self.theme_data
-        self.history_window.configure(bg=t["bg_main"])
-        if hasattr(self, "history_listbox"):
-            self.history_listbox.configure(
-                bg=t["bg_display"],
-                fg=t["fg_display"],
-                selectbackground=t["btn_op_bg"],
-                selectforeground=t["btn_text"],
-                borderwidth=0,
-                highlightthickness=0,
-            )
-
-    def update_history_listbox(self):
-        if self.history_window is None or not tk.Toplevel.winfo_exists(self.history_window):
-            return
-        self.history_listbox.delete(0, tk.END)
-        for expr, res, mode in reversed(self.history):
-            self.history_listbox.insert(tk.END, f"[{mode}] {expr} = {res}")
-
-    def on_history_double_click(self, event):
-        selection = self.history_listbox.curselection()
-        if not selection:
-            return
-        index = len(self.history) - 1 - selection[0]
-        expr, res, mode = self.history[index]
-        self.display.delete(0, tk.END)
-        self.display.insert(0, expr)
-        self.mode_label.config(text=f"Modus: {mode}")
-
-# ============================================================
-#  START
-# ============================================================
-
-def main():
-    root = tk.Tk()
-    CalculatorGUI(root)
-    root.mainloop()
+    def show_history(self):
+        win = tk.Toplevel(self.root)
+        win.title("Letzte Rechnungen")
+        win.geometry("300x400")
+        win.configure(bg=THEME["bg_main"])
+        
+        lb = tk.Listbox(win, bg=THEME["bg_display"], fg="white", bd=0, font=("Arial", 11))
+        lb.pack(fill="both", expand=True, padx=10, pady=10)
+        
+        for item in reversed(self.history): lb.insert(tk.END, item)
+        
+        def pick(e):
+            if not lb.curselection(): return
+            val = lb.get(lb.curselection()).split(" = ")[1]
+            self.display.insert(tk.INSERT, val)
+            win.destroy()
+        
+        lb.bind("<Double-Button-1>", pick)
 
 if __name__ == "__main__":
-    main()
+    root = tk.Tk()
+    root.minsize(350, 500)
+    app = CalculatorGUI(root)
+    root.mainloop()
