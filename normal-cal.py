@@ -1,260 +1,185 @@
-import ast
-import operator
-import math
-import re
+import ast, operator, math, re, sqlite3, datetime, json, os, zipfile, shutil
 import tkinter as tk
 from tkinter import ttk, messagebox
-from decimal import Decimal, getcontext, DivisionByZero
+from decimal import Decimal, getcontext
 from fractions import Fraction
 
 # ============================================================
-#  KONFIGURATION & DESIGN
+# I. SICHERHEIT & MATHEMATIK (Der AST-Kern)
 # ============================================================
-
-THEME = {
-    "bg_main": "#121212",
-    "bg_display": "#1e1e1e",
-    "fg_display": "#ffffff",
-    "btn_bg": "#2c2c2c",
-    "btn_fg": "#ffffff",
-    "btn_op_bg": "#ff9800",
-    "btn_op_fg": "#000000",
-    "btn_eq_bg": "#4caf50",
-    "btn_eq_fg": "#ffffff",
-    "btn_sci_bg": "#2196f3",
-    "btn_sci_fg": "#ffffff",
-    "highlight_bracket": "#3d3d3d"
-}
-
-# ============================================================
-#  SICHERER AST-EVALUATOR
-# ============================================================
-
 class SafeEvaluator:
-    OPS = {
-        ast.Add: operator.add, ast.Sub: operator.sub,
-        ast.Mult: operator.mul, ast.Div: operator.truediv,
-        ast.FloorDiv: operator.floordiv, ast.Mod: operator.mod,
-        ast.Pow: operator.pow, ast.USub: operator.neg,
-        ast.UAdd: lambda x: x,
-    }
-
-    _MATH_FUNCS = {
-        "sin": math.sin, "cos": math.cos, "tan": math.tan,
-        "log": math.log, "ln": math.log, "sqrt": math.sqrt,
-        "abs": abs, "pow": math.pow,
-    }
-
-    _CONSTS = {"pi": math.pi, "e": math.e}
-
-    def __init__(self, mode="float", precision=28, last_result=None):
-        self.mode = mode
-        getcontext().prec = precision
-        self.last_result = last_result
-
-    def _preprocess(self, expr):
-        expr = expr.replace("π", "pi").replace("^", "**")
-        # Implizite Multiplikation (z.B. 2ans -> 2*ans, 2(3) -> 2*(3))
-        expr = re.sub(r'(\d)\s*(ans|pi|e|sin|cos|tan|log|ln|sqrt|\()', r'\1*\2', expr)
-        expr = re.sub(r'(ans|pi|e|\))\s*(\d|\()', r'\1*\2', expr)
-        return expr
+    def __init__(self, last_result=None):
+        self.ops = {
+            ast.Add: operator.add, ast.Sub: operator.sub,
+            ast.Mult: operator.mul, ast.Div: operator.truediv,
+            ast.Pow: operator.pow, ast.USub: operator.neg
+        }
+        self.vars = {"pi": math.pi, "e": math.e, "ans": last_result if last_result else 0}
 
     def evaluate(self, expr):
-        expr = self._preprocess(expr)
-        if not expr.strip(): return None
         try:
+            expr = expr.replace("€", "").replace("%", "/100")
             tree = ast.parse(expr, mode="eval")
             return self._eval_node(tree.body)
-        except SyntaxError:
-            raise ValueError("Syntaxfehler")
+        except Exception as e:
+            return str(e)
 
     def _eval_node(self, node):
-        if isinstance(node, ast.Constant):
-            return self._convert(node.value)
-        if isinstance(node, ast.Name):
-            if node.id == "ans":
-                if self.last_result is None: raise ValueError("Kein 'ans' verfügbar")
-                return self.last_result
-            if node.id in self._CONSTS: return self._convert(self._CONSTS[node.id])
-            raise ValueError(f"Unbekannt: {node.id}")
+        if isinstance(node, ast.Constant): return node.value
+        if isinstance(node, ast.Name): return self.vars.get(node.id, 0)
         if isinstance(node, ast.BinOp):
-            left, right = self._eval_node(node.left), self._eval_node(node.right)
-            return self.OPS[type(node.op)](left, right)
+            return self.ops[type(node.op)](self._eval_node(node.left), self._eval_node(node.right))
         if isinstance(node, ast.UnaryOp):
-            return self.OPS[type(node.op)](self._eval_node(node.operand))
-        if isinstance(node, ast.Call):
-            if not isinstance(node.func, ast.Name): raise ValueError("Fehler")
-            args = [float(self._eval_node(a)) for a in node.args]
-            res = self._MATH_FUNCS[node.func.id](*args)
-            return self._convert(res)
-        raise ValueError("Struktur nicht unterstützt")
-
-    def _convert(self, val):
-        if self.mode == "decimal": return Decimal(str(val)) if not isinstance(val, float) else Decimal(repr(val))
-        if self.mode == "fraction": return Fraction(val).limit_denominator()
-        return float(val)
+            return self.ops[type(node.op)](self._eval_node(node.operand))
+        raise ValueError("Operation nicht erlaubt")
 
 # ============================================================
-#  GUI KLASSE
+# II. DATENBANK & GEDÄCHTNIS
 # ============================================================
+class AIDatabase:
+    def __init__(self, db_name="ultimate_memory.db"):
+        self.db_name = db_name
+        self.conn = sqlite3.connect(db_name)
+        self._setup()
 
-class CalculatorGUI:
+    def _setup(self):
+        cursor = self.conn.cursor()
+        cursor.execute("CREATE TABLE IF NOT EXISTS history (ts TEXT, user TEXT, ai TEXT)")
+        cursor.execute("CREATE TABLE IF NOT EXISTS facts (key TEXT PRIMARY KEY, val TEXT)")
+        self.conn.commit()
+
+    def save_interaction(self, u, a):
+        self.conn.cursor().execute("INSERT INTO history VALUES (?,?,?)", (datetime.datetime.now().isoformat(), u, a))
+        self.conn.commit()
+
+# ============================================================
+# III. KI-LOGIK & ANALYSE
+# ============================================================
+class SmartAI:
+    def __init__(self, db):
+        self.db = db
+        self.inflation = 2.8
+        self.market_return = 7.0
+
+    def think(self, query):
+        query = query.lower().replace(",", ".")
+        nums = [float(n) for n in re.findall(r"(\d+(?:\.\d+)?)", query)]
+        
+        # Identifikation von Kapital, Zins, Zeit
+        k = next((n for n in nums if n > 100), None)
+        p = next((n for n in nums if 0.1 <= n <= 25), 3.5)
+        n = next((n for n in nums if 1 <= n <= 50 and n != p), 1.0)
+
+        if not k: return "🤖 Ich erkenne Zahlen, aber kein Kapital. Wie viel € möchtest du berechnen?"
+
+        res = k * (1 + (p/100))**n
+        advice = "⚠️ Realverlust durch Inflation!" if p < self.inflation else "✅ Rendite über Inflation."
+        
+        report = (f"🧠 KI-Analyse:\nBetrag: {k:,.2f}€\nZins: {p}%\nZeit: {n} J.\n"
+                  f"Ergebnis: {res:,.2f}€\n{advice}")
+        
+        self.db.save_interaction(query, report)
+        return report
+
+# ============================================================
+# IV. HIGH-END GUI (OneUI Style)
+# ============================================================
+class UltimateCalculatorGUI:
     def __init__(self, root):
         self.root = root
-        self.root.title("Pro-Calculator 2026")
-        self.last_result = None
-        self.history = []
-        self.scientific_visible = False
+        self.root.title("AI Finance Station Pro")
+        self.root.geometry("420x700")
+        self.root.configure(bg="#121212")
 
-        self._setup_ui()
-        self._bind_events()
+        self.db = AIDatabase()
+        self.evaluator = SafeEvaluator()
+        self.ai = SmartAI(self.db)
 
-    def _setup_ui(self):
-        self.root.configure(bg=THEME["bg_main"])
-        
-        # Obere Status-Leiste
-        top_bar = tk.Frame(self.root, bg=THEME["bg_main"])
-        top_bar.pack(fill="x", padx=10, pady=(10, 0))
-        
-        self.mode_label = tk.Label(top_bar, text="Modus: Auto", bg=THEME["bg_main"], fg="#888", font=("Arial", 9))
-        self.mode_label.pack(side="left")
+        self._build_ui()
 
-        history_btn = tk.Button(top_bar, text="📜 Verlauf", bg=THEME["bg_main"], fg="#888", bd=0, 
-                                cursor="hand2", command=self.show_history)
-        history_btn.pack(side="right")
+    def _build_ui(self):
+        # Header
+        header = tk.Label(self.root, text="🤖 AI FINANCIAL TERMINAL", bg="#121212", fg="#2196F3", font=("Helvetica", 10, "bold"))
+        header.pack(pady=(15, 0))
 
-        # Display
-        self.display = tk.Entry(self.root, font=("Segoe UI", 32), bd=0, justify="right",
-                                bg=THEME["bg_display"], fg=THEME["fg_display"], 
-                                insertbackground="white", highlightthickness=0)
-        self.display.pack(fill="x", padx=10, pady=10, ipady=10)
+        # KI-Eingabe (Chat-Stil)
+        self.ai_entry = tk.Entry(self.root, font=("Helvetica", 14), bg="#1E1E1E", fg="white", bd=0, insertbackground="white")
+        self.ai_entry.pack(fill="x", padx=25, pady=15, ipady=12)
+        self.ai_entry.insert(0, "Frag die KI...")
 
-        # Button Container
-        self.container = tk.Frame(self.root, bg=THEME["bg_main"])
-        self.container.pack(fill="both", expand=True, padx=5, pady=5)
+        # Display (Große Zahlen)
+        self.display = tk.Entry(self.root, font=("Helvetica", 36), bg="#121212", fg="white", bd=0, justify="right")
+        self.display.pack(fill="x", padx=25, pady=10)
 
-        self.main_frame = tk.Frame(self.container, bg=THEME["bg_main"])
-        self.main_frame.pack(side="left", fill="both", expand=True)
+        # Plotter (Canvas)
+        self.canvas = tk.Canvas(self.root, bg="#1E1E1E", height=120, highlightthickness=0)
+        self.canvas.pack(fill="x", padx=25, pady=10)
 
-        self.sci_frame = tk.Frame(self.container, bg=THEME["bg_main"])
+        # Button-Grid
+        btn_frame = tk.Frame(self.root, bg="#121212")
+        btn_frame.pack(fill="both", expand=True, padx=20)
 
-        self._create_main_grid()
-        self._create_sci_grid()
-
-    def _create_main_grid(self):
-        btns = [
-            ('C', 0, 0, THEME["btn_op_bg"]), ('←', 0, 1, THEME["btn_op_bg"]), ('(', 0, 2, THEME["btn_op_bg"]), (')', 0, 3, THEME["btn_op_bg"]),
-            ('7', 1, 0, THEME["btn_bg"]), ('8', 1, 1, THEME["btn_bg"]), ('9', 1, 2, THEME["btn_bg"]), ('/', 1, 3, THEME["btn_op_bg"]),
-            ('4', 2, 0, THEME["btn_bg"]), ('5', 2, 1, THEME["btn_bg"]), ('6', 2, 2, THEME["btn_bg"]), ('*', 2, 3, THEME["btn_op_bg"]),
-            ('1', 3, 0, THEME["btn_bg"]), ('2', 3, 1, THEME["btn_bg"]), ('3', 3, 2, THEME["btn_bg"]), ('-', 3, 3, THEME["btn_op_bg"]),
-            ('0', 4, 0, THEME["btn_bg"]), ('.', 4, 1, THEME["btn_bg"]), ('ans', 4, 2, THEME["btn_bg"]), ('+', 4, 3, THEME["btn_op_bg"]),
-            ('=', 5, 0, THEME["btn_eq_bg"]), ('Sci', 5, 3, THEME["btn_sci_bg"])
+        buttons = [
+            ('C', 0, 0, "#FF5252"), ('←', 0, 1, "#424242"), ('ans', 0, 2, "#424242"), ('/', 0, 3, "#FF9800"),
+            ('7', 1, 0, "#2C2C2C"), ('8', 1, 1, "#2C2C2C"), ('9', 1, 2, "#2C2C2C"), ('*', 1, 3, "#FF9800"),
+            ('4', 2, 0, "#2C2C2C"), ('5', 2, 1, "#2C2C2C"), ('6', 2, 2, "#2C2C2C"), ('-', 2, 3, "#FF9800"),
+            ('1', 3, 0, "#2C2C2C"), ('2', 3, 1, "#2C2C2C"), ('3', 3, 2, "#2C2C2C"), ('+', 3, 3, "#FF9800"),
+            ('0', 4, 0, "#2C2C2C"), ('.', 4, 1, "#2C2C2C"), ('=', 4, 2, "#4CAF50")
         ]
-        for (text, r, c, color) in btns:
-            if text == '=':
-                cmd = self.calculate
-                b = tk.Button(self.main_frame, text=text, font=("Arial", 14, "bold"), bg=color, fg="white", bd=0, command=cmd)
-                b.grid(row=r, column=c, columnspan=3, padx=2, pady=2, sticky="nsew")
-            else:
-                cmd = self.toggle_sci if text == 'Sci' else lambda t=text: self._handle_btn(t)
-                b = tk.Button(self.main_frame, text=text, width=5, height=2, font=("Arial", 12), bg=color, fg="white", bd=0, command=cmd)
-                b.grid(row=r, column=c, padx=2, pady=2, sticky="nsew")
 
-        for i in range(4): self.main_frame.columnconfigure(i, weight=1)
-        for i in range(6): self.main_frame.rowconfigure(i, weight=1)
+        for (txt, r, c, clr) in buttons:
+            btn = tk.Button(btn_frame, text=txt, font=("Helvetica", 12, "bold"), bg=clr, fg="white", bd=0, 
+                            command=lambda t=txt: self._on_btn(t))
+            btn.grid(row=r, column=c, padx=3, pady=3, sticky="nsew")
+            if txt == '=': btn.grid(columnspan=2)
 
-    def _create_sci_grid(self):
-        sci_btns = [('sin', 0, 0), ('cos', 0, 1), ('tan', 1, 0), ('sqrt', 1, 1),
-                    ('log', 2, 0), ('ln', 2, 1), ('pi', 3, 0), ('e', 3, 1)]
-        for (text, r, c) in sci_btns:
-            b = tk.Button(self.sci_frame, text=text, width=6, height=2, font=("Arial", 11),
-                          bg=THEME["btn_sci_bg"], fg="white", bd=0, 
-                          command=lambda t=text: self.display.insert(tk.INSERT, t+"("))
-            b.grid(row=r, column=c, padx=2, pady=2, sticky="nsew")
+        for i in range(4): btn_frame.columnconfigure(i, weight=1)
+        for i in range(5): btn_frame.rowconfigure(i, weight=1)
 
-    def _handle_btn(self, text):
-        if text == 'C': self.display.delete(0, tk.END)
-        elif text == '←': self.display.delete(self.display.index(tk.INSERT)-1)
-        else: self.display.insert(tk.INSERT, text)
-        self._highlight_brackets()
+        # Footer Buttons
+        footer = tk.Frame(self.root, bg="#121212")
+        footer.pack(fill="x", pady=10)
+        tk.Button(footer, text="Backup", bg="#333", fg="gray", bd=0, command=self._backup).pack(side="left", padx=25)
+        tk.Button(footer, text="KI Analyse", bg="#2196F3", fg="white", bd=0, command=self._run_ai, padx=10).pack(side="right", padx=25)
 
-    def toggle_sci(self):
-        if self.scientific_visible:
-            self.sci_frame.pack_forget()
-        else:
-            self.sci_frame.pack(side="right", padx=5, pady=5, fill="both")
-        self.scientific_visible = not self.scientific_visible
+    def _on_btn(self, char):
+        if char == 'C': self.display.delete(0, tk.END)
+        elif char == '←': self.display.delete(len(self.display.get())-1)
+        elif char == '=': self._calc()
+        else: self.display.insert(tk.END, char)
 
-    def calculate(self):
-        expr = self.display.get()
-        if not expr: return
-        mode = "decimal" if any(x in expr for x in ".(sinπcoslogsqrt") else "fraction"
-        self.mode_label.config(text=f"Modus: {mode.capitalize()}")
-        
-        eval_engine = SafeEvaluator(mode=mode, last_result=self.last_result)
-        try:
-            res = eval_engine.evaluate(expr)
-            if isinstance(res, Fraction): out = f"{res.numerator}/{res.denominator}"
-            elif isinstance(res, Decimal): out = format(res.normalize(), "g")
-            else: out = f"{res:.10g}"
-            
-            self.history.append(f"{expr} = {out}")
-            self.last_result = res
-            self.display.delete(0, tk.END)
-            self.display.insert(0, out)
-        except Exception as e:
-            messagebox.showerror("Mathematik-Fehler", str(e))
+    def _calc(self):
+        res = self.evaluator.evaluate(self.display.get())
+        self.display.delete(0, tk.END)
+        self.display.insert(0, str(res))
 
-    # ================== ZUSATZFUNKTIONEN ==================
+    def _run_ai(self):
+        q = self.ai_entry.get()
+        ans = self.ai.think(q)
+        messagebox.showinfo("AI Analysis", ans)
+        self._plot_ai_data(q)
 
-    def _bind_events(self):
-        self.display.bind("<KeyRelease>", self._highlight_brackets)
-        self.root.bind("<Return>", lambda e: self.calculate())
+    def _plot_ai_data(self, q):
+        # Einfache Plot-Logik für Zinsen
+        self.canvas.delete("all")
+        self.canvas.create_line(10, 110, 350, 110, fill="gray") # X-Achse
+        nums = [float(n) for n in re.findall(r"(\d+(?:\.\d+)?)", q)]
+        if len(nums) >= 2:
+            k = nums[0]
+            p = nums[1] if len(nums)>1 else 3.5
+            pts = []
+            for x in range(20):
+                y = 110 - (k * (1 + p/100)**x / (k*2) * 100)
+                pts.append((10 + x*18, y))
+            self.canvas.create_line(pts, fill="#4CAF50", width=2, smooth=True)
 
-    def _highlight_brackets(self, event=None):
-        text = self.display.get()
-        pos = self.display.index(tk.INSERT)
-        self.display.config(bg=THEME["bg_display"])
-        
-        if pos > 0 and pos <= len(text):
-            char = text[pos-1]
-            match_pos = None
-            if char == ")": match_pos = self._find_match(text, pos-1, -1, "(", ")")
-            elif char == "(": match_pos = self._find_match(text, pos-1, 1, ")", "(")
-            
-            if match_pos is not None:
-                self.display.config(bg=THEME["highlight_bracket"])
-                self.root.after(250, lambda: self.display.config(bg=THEME["bg_display"]))
-
-    def _find_match(self, text, start, step, target, other):
-        count = 0
-        for i in range(start, -1 if step == -1 else len(text), step):
-            if text[i] == other: count += 1
-            elif text[i] == target: count -= 1
-            if count == 0: return i
-        return None
-
-    def show_history(self):
-        win = tk.Toplevel(self.root)
-        win.title("Letzte Rechnungen")
-        win.geometry("300x400")
-        win.configure(bg=THEME["bg_main"])
-        
-        lb = tk.Listbox(win, bg=THEME["bg_display"], fg="white", bd=0, font=("Arial", 11))
-        lb.pack(fill="both", expand=True, padx=10, pady=10)
-        
-        for item in reversed(self.history): lb.insert(tk.END, item)
-        
-        def pick(e):
-            if not lb.curselection(): return
-            val = lb.get(lb.curselection()).split(" = ")[1]
-            self.display.insert(tk.INSERT, val)
-            win.destroy()
-        
-        lb.bind("<Double-Button-1>", pick)
+    def _backup(self):
+        b = self.db.db_name
+        ts = datetime.datetime.now().strftime("%Y%m%d_%H%M%S")
+        shutil.copy(b, f"backup_{ts}.db")
+        messagebox.showinfo("Backup", "Lokale Datenbank gesichert!")
 
 if __name__ == "__main__":
     root = tk.Tk()
-    root.minsize(350, 500)
-    app = CalculatorGUI(root)
+    app = UltimateCalculatorGUI(root)
     root.mainloop()
