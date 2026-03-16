@@ -1,13 +1,9 @@
 #!/usr/bin/env python
 # -*- coding: utf-8 -*-
 
-# ===== Wissenschaftlicher Taschenrechner mit erweiterten Features =====
-# - Verlauf (History) anzeigen
-# - Tastaturunterstützung
-# - Winkelmodus (Deg/Rad/Grad)
-# - Komplexe Zahlen (mit cmath)
-# - Design anpassbar (Themes)
-# - Abgerundete Ecken, weißer Hintergrund, kein Konsolenfenster
+# ===== Wissenschaftlicher Taschenrechner mit Sprachumschaltung =====
+# Features: Verlauf, Tastatur, Winkelmodus, komplexe Zahlen, Themes,
+#           Deutsch/Englisch Umschaltung, abgerundete Ecken
 
 import sys
 import ctypes
@@ -84,7 +80,7 @@ class RoundWindow:
         self.root.geometry(f"+{x}+{y}")
 
 # ============================================================
-# I. SICHERER EVALUATOR mit komplexen Zahlen und Winkelmodus
+# I. SICHERER EVALUATOR (mit komplexen Zahlen und Winkelmodus)
 # ============================================================
 class SafeEvaluator:
     def __init__(self, last_result=None, angle_mode='deg', use_complex=False):
@@ -99,10 +95,8 @@ class SafeEvaluator:
         self.update_functions()
         
     def update_functions(self):
-        # Wähle math oder cmath je nach Modus
         lib = cmath if self.use_complex else math
         
-        # Basisfunktionen
         self.funcs = {
             "sin": self._sin_wrapper,
             "cos": self._cos_wrapper,
@@ -119,7 +113,6 @@ class SafeEvaluator:
             "tanh": lib.tanh,
         }
     
-    # Wrapper für trigonometrische Funktionen mit Winkelkonvertierung
     def _to_radians(self, x):
         if self.angle_mode == 'deg':
             return math.radians(x)
@@ -162,10 +155,7 @@ class SafeEvaluator:
     
     def evaluate(self, expr):
         try:
-            # Ersetzungen für Benutzerfreundlichkeit
             expr = expr.replace("^", "**")
-            # Komplexe Zahlen: j wird zu J (Python erwartet J, aber wir lassen j zu)
-            # Python kann auch 'j' verstehen
             tree = ast.parse(expr, mode="eval")
             return self._eval_node(tree.body)
         except Exception as e:
@@ -177,7 +167,6 @@ class SafeEvaluator:
         if isinstance(node, ast.Name):
             if node.id in self.vars:
                 return self.vars[node.id]
-            # Für komplexe Zahlen: wenn j, dann 1j
             if node.id == 'j':
                 return 1j
             return 0
@@ -194,19 +183,48 @@ class SafeEvaluator:
         raise ValueError("Operation nicht erlaubt")
 
 # ============================================================
-# II. GUI mit erweiterten Features
+# II. GUI mit erweiterten Features und Sprachumschaltung
 # ============================================================
 class UltimateCalculatorGUI:
     def __init__(self):
-        self.history = []  # Liste von (ausdruck, ergebnis)
-        self.angle_mode = 'deg'  # deg, rad, grad
+        self.history = []
+        self.angle_mode = 'deg'
         self.use_complex = False
-        self.theme = 'light'  # light, dark, blue
+        self.theme = 'light'
+        self.lang = 'de'  # Standard Deutsch
         
         self.evaluator = SafeEvaluator(angle_mode=self.angle_mode, use_complex=self.use_complex)
         
+        # Sprachdaten
+        self.lang_data = {
+            'de': {
+                'window_title': 'Wissenschaftlicher Taschenrechner',
+                'sin': 'sin', 'cos': 'cos', 'tan': 'tan', 'asin': 'asin', 'acos': 'acos',
+                'atan': 'atan', 'sinh': 'sinh', 'cosh': 'cosh', 'tanh': 'tanh', 'log': 'log',
+                'sqrt': '√', '^': '^', '(': '(', ')': ')', 'C': 'C', '←': '←',
+                '7': '7', '8': '8', '9': '9', '/': '/', '4': '4', '5': '5', '6': '6',
+                '*': '*', '-': '-', '1': '1', '2': '2', '3': '3', '+': '+', '=': '=',
+                '0': '0', '.': '.', 'pi': 'π', 'e': 'e', 'ans': 'Ans', 'j': 'j',
+                'Modus': 'Modus', 'Komplex': 'Komplex', 'Theme': 'Design', 'Sprache': 'Sprache',
+                'History': 'Verlauf', 'Deg': 'Grad', 'Rad': 'Rad', 'Grad': 'Gon',
+                'header': '🧪 WISSENSCHAFTLICHER TASCHENRECHNER'
+            },
+            'en': {
+                'window_title': 'Scientific Calculator',
+                'sin': 'sin', 'cos': 'cos', 'tan': 'tan', 'asin': 'asin', 'acos': 'acos',
+                'atan': 'atan', 'sinh': 'sinh', 'cosh': 'cosh', 'tanh': 'tanh', 'log': 'log',
+                'sqrt': '√', '^': '^', '(': '(', ')': ')', 'C': 'C', '←': '←',
+                '7': '7', '8': '8', '9': '9', '/': '/', '4': '4', '5': '5', '6': '6',
+                '*': '*', '-': '-', '1': '1', '2': '2', '3': '3', '+': '+', '=': '=',
+                '0': '0', '.': '.', 'pi': 'π', 'e': 'e', 'ans': 'Ans', 'j': 'j',
+                'Modus': 'Mode', 'Komplex': 'Complex', 'Theme': 'Theme', 'Sprache': 'Language',
+                'History': 'History', 'Deg': 'Deg', 'Rad': 'Rad', 'Grad': 'Grad',
+                'header': '🧪 SCIENTIFIC CALCULATOR'
+            }
+        }
+        
         # Fenster erstellen
-        self.win = RoundWindow(480, 650, "Scientific Pro Calculator",
+        self.win = RoundWindow(520, 680, self.lang_data[self.lang]['window_title'],
                                bg_color="#ffffff", title_color="#000000")
         self.root = self.win.root
         self.inner = self.win.inner_frame
@@ -221,125 +239,107 @@ class UltimateCalculatorGUI:
         self._apply_theme()
     
     def _build_ui(self):
-        # Header mit Statusleiste für Modus
+        # Header mit Statusleiste
         self.header_frame = tk.Frame(self.inner, bg=self.inner.cget('bg'))
         self.header_frame.pack(fill="x", pady=(5,0))
         
-        self.mode_label = tk.Label(self.header_frame, text="Deg", font=("Segoe UI", 9),
-                                    bg=self.inner.cget('bg'), fg="black")
+        self.mode_label = tk.Label(self.header_frame, text=self.lang_data[self.lang]['Deg'], 
+                                    font=("Segoe UI", 9), bg=self.inner.cget('bg'), fg="black")
         self.mode_label.pack(side="left", padx=5)
+        
+        self.header_label = tk.Label(self.header_frame, text=self.lang_data[self.lang]['header'],
+                                      font=("Segoe UI", 9, "bold"), bg=self.inner.cget('bg'), fg="#2196F3")
+        self.header_label.pack(side="right", padx=5)
         
         # Display
         self.display = tk.Entry(self.inner, font=("Helvetica", 32),
                                 bg="#f0f0f0", fg="black", bd=1, relief="solid", justify="right")
         self.display.pack(fill="x", padx=20, pady=10)
         
-        # History-Button und kurze Anzeige (optional)
-        self.history_btn = tk.Button(self.inner, text="📜 History", font=("Segoe UI", 9),
-                                      command=self.show_history, bg="#e0e0e0", fg="black",
-                                      bd=0, padx=5, pady=2)
+        # History-Button
+        self.history_btn = tk.Button(self.inner, text=self.lang_data[self.lang]['History'],
+                                      font=("Segoe UI", 9), command=self.show_history,
+                                      bg="#e0e0e0", fg="black", bd=0, padx=5, pady=2)
         self.history_btn.pack(anchor="ne", padx=20, pady=2)
         
-        # Frame für Buttons
-        btn_frame = tk.Frame(self.inner, bg=self.inner.cget('bg'))
-        btn_frame.pack(fill="both", expand=True, padx=15, pady=(0,15))
+        # Frame für Buttons (6 Spalten)
+        self.btn_frame = tk.Frame(self.inner, bg=self.inner.cget('bg'))
+        self.btn_frame.pack(fill="both", expand=True, padx=15, pady=(0,15))
         
-        # Button-Definitionen: (Text, row, col, bg, optional colspan)
-        # Wir erweitern um zusätzliche Buttons für Komplex, Modus, Theme
-        buttons = [
-            # Wissenschaftliche Funktionen
-            ('sin', 0, 0, "#e0e0e0"), ('cos', 0, 1, "#e0e0e0"), ('tan', 0, 2, "#e0e0e0"), ('asin', 0, 3, "#e0e0e0"), ('acos', 0, 4, "#e0e0e0"),
-            ('atan', 1, 0, "#e0e0e0"), ('sinh', 1, 1, "#e0e0e0"), ('cosh', 1, 2, "#e0e0e0"), ('tanh', 1, 3, "#e0e0e0"), ('log', 1, 4, "#e0e0e0"),
-            ('sqrt', 2, 0, "#e0e0e0"), ('^', 2, 1, "#e0e0e0"), ('(', 2, 2, "#d9d9d9"), (')', 2, 3, "#d9d9d9"), ('C', 2, 4, "#FFCDD2"),
-            ('←', 3, 0, "#d9d9d9"), ('7', 3, 1, "#ffffff"), ('8', 3, 2, "#ffffff"), ('9', 3, 3, "#ffffff"), ('/', 3, 4, "#FFB74D"),
-            ('4', 4, 0, "#ffffff"), ('5', 4, 1, "#ffffff"), ('6', 4, 2, "#ffffff"), ('*', 4, 3, "#FFB74D"), ('-', 4, 4, "#FFB74D"),
-            ('1', 5, 0, "#ffffff"), ('2', 5, 1, "#ffffff"), ('3', 5, 2, "#ffffff"), ('+', 5, 3, "#FFB74D"), ('=', 5, 4, "#4CAF50", 2),
-            ('0', 6, 0, "#ffffff", 2), ('.', 6, 2, "#ffffff"), ('pi', 6, 3, "#d9d9d9"), ('e', 6, 4, "#d9d9d9"),
-            ('ans', 7, 0, "#d9d9d9"), ('j', 7, 1, "#d9d9d9"), ('Modus', 7, 2, "#d9d9d9"), ('Komplex', 7, 3, "#d9d9d9"), ('Theme', 7, 4, "#d9d9d9"),
+        # Button-Definitionen: (Schlüssel, row, col)
+        # Alle Buttons haben einen Schlüssel, der in lang_data übersetzt wird
+        btn_keys = [
+            ('sin', 0, 0), ('cos', 0, 1), ('tan', 0, 2), ('asin', 0, 3), ('acos', 0, 4), ('atan', 0, 5),
+            ('sinh', 1, 0), ('cosh', 1, 1), ('tanh', 1, 2), ('log', 1, 3), ('sqrt', 1, 4), ('^', 1, 5),
+            ('C', 2, 0), ('←', 2, 1), ('(', 2, 2), (')', 2, 3), ('ans', 2, 4), ('j', 2, 5),
+            ('7', 3, 0), ('8', 3, 1), ('9', 3, 2), ('/', 3, 3), ('4', 3, 4), ('5', 3, 5),
+            ('6', 4, 0), ('*', 4, 1), ('1', 4, 2), ('2', 4, 3), ('3', 4, 4), ('-', 4, 5),
+            ('0', 5, 0), ('.', 5, 1), ('pi', 5, 2), ('e', 5, 3), ('+', 5, 4), ('=', 5, 5),
+            ('Modus', 6, 0), ('Komplex', 6, 1), ('Theme', 6, 2), ('Sprache', 6, 3), ('', 6, 4), ('', 6, 5)
         ]
         
-        # Wir müssen die Liste anders aufbauen, da wir unterschiedliche Spans haben.
-        # Besser: Manuell erstellen, aber wir iterieren hier mit Anpassungen.
-        # Wir verwenden eine Schleife, aber für '=' und '0' mit Spans müssen wir aufpassen.
-        # Einfacher: Wir erstellen die Buttons einzeln, aber das ist lang. Ich mache es in zwei Durchgängen.
-        
-        # Zuerst normale Buttons
-        btn_data = [
-            ('sin', 0, 0), ('cos', 0, 1), ('tan', 0, 2), ('asin', 0, 3), ('acos', 0, 4),
-            ('atan', 1, 0), ('sinh', 1, 1), ('cosh', 1, 2), ('tanh', 1, 3), ('log', 1, 4),
-            ('sqrt', 2, 0), ('^', 2, 1), ('(', 2, 2), (')', 2, 3), ('C', 2, 4),
-            ('←', 3, 0), ('7', 3, 1), ('8', 3, 2), ('9', 3, 3), ('/', 3, 4),
-            ('4', 4, 0), ('5', 4, 1), ('6', 4, 2), ('*', 4, 3), ('-', 4, 4),
-            ('1', 5, 0), ('2', 5, 1), ('3', 5, 2), ('+', 5, 3), 
-            ('0', 6, 0), ('.', 6, 2), ('pi', 6, 3), ('e', 6, 4),
-            ('ans', 7, 0), ('j', 7, 1), ('Modus', 7, 2), ('Komplex', 7, 3), ('Theme', 7, 4),
-        ]
-        
-        # Farben zuweisen
-        def get_color(txt):
-            if txt in ['C']:
+        # Farbzuordnung
+        def get_bg(key):
+            if key == 'C':
                 return "#FFCDD2"
-            elif txt in ['/', '*', '-', '+']:
+            elif key in ['/', '*', '-', '+']:
                 return "#FFB74D"
-            elif txt == '=':
+            elif key == '=':
                 return "#4CAF50"
-            elif txt in ['sin','cos','tan','asin','acos','atan','sinh','cosh','tanh','log','sqrt','^']:
+            elif key in ['sin','cos','tan','asin','acos','atan','sinh','cosh','tanh','log','sqrt','^']:
                 return "#e0e0e0"
-            elif txt in ['(',')','←','ans','j','Modus','Komplex','Theme','pi','e']:
+            elif key in ['(',')','←','ans','j','Modus','Komplex','Theme','Sprache','pi','e']:
                 return "#d9d9d9"
             else:
                 return "#ffffff"
         
-        for (txt, r, c) in btn_data:
-            clr = get_color(txt)
-            btn = tk.Button(btn_frame, text=txt, font=("Helvetica", 11, "bold"),
-                            bg=clr, fg="black", bd=0, relief="flat",
+        # Buttons erstellen und Schlüssel speichern
+        self.buttons = {}
+        for (key, r, c) in btn_keys:
+            if not key:
+                # leerer Platzhalter, überspringen
+                continue
+            bg = get_bg(key)
+            # Übersetzten Text holen
+            text = self.lang_data[self.lang].get(key, key)
+            btn = tk.Button(self.btn_frame, text=text, font=("Helvetica", 11, "bold"),
+                            bg=bg, fg="black", bd=0, relief="flat",
                             activebackground="#c0c0c0", activeforeground="black",
-                            command=lambda t=txt: self._on_btn(t))
+                            command=lambda k=key: self._on_btn(k))
+            btn.key = key  # Schlüssel speichern
             btn.grid(row=r, column=c, padx=2, pady=2, sticky="nsew")
+            self.buttons[key] = btn
         
-        # '=' extra mit Spalte 4 und 5
-        btn_eq = tk.Button(btn_frame, text='=', font=("Helvetica", 11, "bold"),
-                           bg="#4CAF50", fg="white", bd=0, relief="flat",
-                           activebackground="#367c39", activeforeground="white",
-                           command=lambda: self._on_btn('='))
-        btn_eq.grid(row=5, column=4, rowspan=1, columnspan=2, padx=2, pady=2, sticky="nsew")
-        
-        # '0' mit Spalte 0-1
-        btn_0 = tk.Button(btn_frame, text='0', font=("Helvetica", 11, "bold"),
-                          bg="#ffffff", fg="black", bd=0, relief="flat",
-                          activebackground="#c0c0c0", activeforeground="black",
-                          command=lambda: self._on_btn('0'))
-        btn_0.grid(row=6, column=0, columnspan=2, padx=2, pady=2, sticky="nsew")
-        
-        # Spalten konfigurieren
-        for i in range(5):
-            btn_frame.columnconfigure(i, weight=1)
-        # Zeilen 0-7
-        for i in range(8):
-            btn_frame.rowconfigure(i, weight=1)
+        # Spalten konfigurieren (6 Spalten)
+        for i in range(6):
+            self.btn_frame.columnconfigure(i, weight=1)
+        for i in range(7):
+            self.btn_frame.rowconfigure(i, weight=1)
     
-    def _on_btn(self, char):
-        if char == 'C':
+    def _on_btn(self, key):
+        if key == 'C':
             self.display.delete(0, tk.END)
-        elif char == '←':
+        elif key == '←':
             self.display.delete(len(self.display.get())-1, tk.END)
-        elif char == '=':
+        elif key == '=':
             self._calc()
-        elif char == 'Modus':
+        elif key == 'Modus':
             self._cycle_angle_mode()
-        elif char == 'Komplex':
+        elif key == 'Komplex':
             self._toggle_complex()
-        elif char == 'Theme':
+        elif key == 'Theme':
             self._cycle_theme()
+        elif key == 'Sprache':
+            self._toggle_language()
         else:
-            self.display.insert(tk.END, char)
+            # Für normale Buttons den übersetzten Text einfügen? 
+            # Wir fügen den Schlüssel ein, da die Funktionen auf Schlüsseln basieren.
+            # Aber für Zahlen und Operatoren ist der Schlüssel gleich dem Zeichen.
+            self.display.insert(tk.END, key)
     
     def _key_press(self, event):
-        # Verhindern, dass bestimmte Tasten das Fenster schließen
         if event.keysym in ('Return', 'Escape', 'BackSpace'):
             return
-        # Normale Zeichen einfügen
         char = event.char
         if char and char.isprintable():
             self.display.insert(tk.END, char)
@@ -348,13 +348,11 @@ class UltimateCalculatorGUI:
         expr = self.display.get()
         res = self.evaluator.evaluate(expr)
         
-        # Ergebnis formatieren
         if isinstance(res, float):
             if abs(res) < 1e-10:
                 res = 0.0
             res_str = f"{res:.10f}".rstrip('0').rstrip('.') if '.' in f"{res:.10f}" else str(res)
         elif isinstance(res, complex):
-            # Komplexe Zahl formatieren
             res_str = f"{res.real:.10f}".rstrip('0').rstrip('.') if abs(res.imag) < 1e-10 else str(res)
         else:
             res_str = str(res)
@@ -362,10 +360,8 @@ class UltimateCalculatorGUI:
         self.display.delete(0, tk.END)
         self.display.insert(0, res_str)
         
-        # History speichern
         self.history.append((expr, res_str))
         
-        # ans aktualisieren
         try:
             self.evaluator.vars["ans"] = float(res) if not isinstance(res, complex) else complex(res)
         except:
@@ -373,18 +369,19 @@ class UltimateCalculatorGUI:
     
     def show_history(self):
         if not self.history:
-            messagebox.showinfo("History", "Keine Einträge vorhanden.")
+            messagebox.showinfo(self.lang_data[self.lang]['History'], 
+                                "Keine Einträge vorhanden." if self.lang=='de' else "No entries.")
             return
         
-        # Neues Fenster mit abgerundeten Ecken
-        hist_win = RoundWindow(400, 300, "Verlauf", bg_color="#ffffff", title_color="#000000")
+        hist_win = RoundWindow(400, 300, self.lang_data[self.lang]['History'],
+                               bg_color="#ffffff", title_color="#000000")
         hist_root = hist_win.root
         hist_inner = hist_win.inner_frame
         
         listbox = tk.Listbox(hist_inner, font=("Courier", 10), bg="#f0f0f0", fg="black")
         listbox.pack(fill="both", expand=True, padx=10, pady=10)
         
-        for expr, res in self.history[-20:]:  # letzte 20 anzeigen
+        for expr, res in self.history[-20:]:
             listbox.insert(tk.END, f"{expr} = {res}")
         
         scrollbar = tk.Scrollbar(listbox, orient="vertical")
@@ -392,7 +389,8 @@ class UltimateCalculatorGUI:
         listbox.config(yscrollcommand=scrollbar.set)
         scrollbar.config(command=listbox.yview)
         
-        tk.Button(hist_inner, text="Schließen", command=hist_root.destroy,
+        close_text = "Schließen" if self.lang=='de' else "Close"
+        tk.Button(hist_inner, text=close_text, command=hist_root.destroy,
                   bg="#e0e0e0", fg="black", bd=0, padx=10, pady=2).pack(pady=5)
         
         hist_root.mainloop()
@@ -402,22 +400,43 @@ class UltimateCalculatorGUI:
         idx = modes.index(self.angle_mode)
         self.angle_mode = modes[(idx+1) % 3]
         self.evaluator.angle_mode = self.angle_mode
-        self.mode_label.config(text=self.angle_mode.capitalize())
+        # Modusname übersetzt anzeigen
+        mode_name = self.lang_data[self.lang][self.angle_mode.capitalize()]
+        self.mode_label.config(text=mode_name)
     
     def _toggle_complex(self):
         self.use_complex = not self.use_complex
         self.evaluator.use_complex = self.use_complex
         self.evaluator.update_functions()
-        # Button farblich anpassen? Wir ändern den Text
-        # Geht nicht direkt, wir suchen den Button 'Komplex' und ändern dessen Farbe
-        # Wir könnten das später implementieren, fürs erste nur Statuslabel
-        self.mode_label.config(text=f"{self.angle_mode.capitalize()} {'Complex' if self.use_complex else 'Real'}")
+        # Status im mode_label anzeigen
+        mode_text = self.lang_data[self.lang][self.angle_mode.capitalize()]
+        if self.use_complex:
+            mode_text += " C" if self.lang=='en' else " K"
+        self.mode_label.config(text=mode_text)
     
     def _cycle_theme(self):
         themes = ['light', 'dark', 'blue']
         idx = themes.index(self.theme)
         self.theme = themes[(idx+1) % 3]
         self._apply_theme()
+    
+    def _toggle_language(self):
+        self.lang = 'en' if self.lang == 'de' else 'de'
+        # Fenstertitel aktualisieren
+        self.win.canvas.itemconfig(1, text=self.lang_data[self.lang]['window_title'])
+        # Header-Label
+        self.header_label.config(text=self.lang_data[self.lang]['header'])
+        # History-Button
+        self.history_btn.config(text=self.lang_data[self.lang]['History'])
+        # Alle Buttons neu beschriften
+        for key, btn in self.buttons.items():
+            btn.config(text=self.lang_data[self.lang].get(key, key))
+        # Modus-Label
+        mode_name = self.lang_data[self.lang][self.angle_mode.capitalize()]
+        if self.use_complex:
+            mode_name += " C" if self.lang=='en' else " K"
+        self.mode_label.config(text=mode_name)
+        # ggf. weitere Texte (z.B. in show_history) werden beim Öffnen aktualisiert
     
     def _apply_theme(self):
         if self.theme == 'light':
@@ -439,16 +458,17 @@ class UltimateCalculatorGUI:
             display_bg = "#ffffff"
             special_bg = "#90caf9"
         
-        # Hintergrund des Hauptfensters ändern
+        # Hauptfenster
         self.root.configure(bg=bg_main)
         self.win.canvas.configure(bg=bg_main)
         self.win.canvas.delete("all")
-        self.win.canvas.create_round_rect(5, 5, 475, 645, r=20, fill=bg_main, outline="#cccccc", width=2)
+        self.win.canvas.create_round_rect(5, 5, 515, 675, r=20, fill=bg_main, outline="#cccccc", width=2)
         self.inner.configure(bg=bg_main)
         
         # Header
         self.header_frame.configure(bg=bg_main)
         self.mode_label.configure(bg=bg_main, fg=fg_main)
+        self.header_label.configure(bg=bg_main, fg="#2196F3")
         
         # Display
         self.display.configure(bg=display_bg, fg=fg_main)
@@ -456,28 +476,20 @@ class UltimateCalculatorGUI:
         # History-Button
         self.history_btn.configure(bg=special_bg, fg=fg_main)
         
-        # Alle Buttons im btn_frame müssen neu konfiguriert werden
-        # Das ist aufwändig, wir iterieren über alle Kinder von btn_frame
-        btn_frame = self.inner.winfo_children()[3]  # Achtung, Index könnte sich ändern
-        if isinstance(btn_frame, tk.Frame):
-            for child in btn_frame.winfo_children():
-                if isinstance(child, tk.Button):
-                    txt = child.cget("text")
-                    if txt in ['C']:
-                        child.configure(bg="#FFCDD2" if self.theme=='light' else "#d32f2f", fg=fg_main)
-                    elif txt in ['/', '*', '-', '+']:
-                        child.configure(bg="#FFB74D" if self.theme=='light' else "#f57c00", fg=fg_main)
-                    elif txt == '=':
-                        child.configure(bg="#4CAF50", fg="white")
-                    elif txt in ['sin','cos','tan','asin','acos','atan','sinh','cosh','tanh','log','sqrt','^']:
-                        child.configure(bg=special_bg, fg=fg_main)
-                    elif txt in ['(',')','←','ans','j','Modus','Komplex','Theme','pi','e']:
-                        child.configure(bg=special_bg, fg=fg_main)
-                    else:
-                        child.configure(bg=btn_bg, fg=fg_main)
-        
-        # Für '0' und '=' extra
-        # '0' ist btn_0, aber wir finden es nicht einzeln; es ist bereits in der Schleife enthalten
+        # Buttons
+        for key, btn in self.buttons.items():
+            if key == 'C':
+                btn.configure(bg="#FFCDD2" if self.theme=='light' else "#d32f2f", fg=fg_main)
+            elif key in ['/', '*', '-', '+']:
+                btn.configure(bg="#FFB74D" if self.theme=='light' else "#f57c00", fg=fg_main)
+            elif key == '=':
+                btn.configure(bg="#4CAF50", fg="white")
+            elif key in ['sin','cos','tan','asin','acos','atan','sinh','cosh','tanh','log','sqrt','^']:
+                btn.configure(bg=special_bg, fg=fg_main)
+            elif key in ['(',')','←','ans','j','Modus','Komplex','Theme','Sprache','pi','e']:
+                btn.configure(bg=special_bg, fg=fg_main)
+            else:
+                btn.configure(bg=btn_bg, fg=fg_main)
 
 # ------------------------------------------------------------
 # Hauptprogramm
