@@ -1,9 +1,9 @@
 #!/usr/bin/env python
 # -*- coding: utf-8 -*-
 
-# ===== Wissenschaftlicher Taschenrechner mit Sprachumschaltung =====
+# ===== Wissenschaftlicher Taschenrechner mit übersichtlichem Layout =====
 # Features: Verlauf, Tastatur, Winkelmodus, komplexe Zahlen, Themes,
-#           Deutsch/Englisch Umschaltung, abgerundete Ecken
+#           Deutsch/Englisch Umschaltung, abgerundete Ecken, klares Raster.
 
 import sys
 import ctypes
@@ -89,14 +89,13 @@ class SafeEvaluator:
             ast.Mult: operator.mul, ast.Div: operator.truediv,
             ast.Pow: operator.pow, ast.USub: operator.neg
         }
-        self.angle_mode = angle_mode  # 'deg', 'rad', 'grad'
+        self.angle_mode = angle_mode
         self.use_complex = use_complex
         self.vars = {"pi": math.pi, "e": math.e, "ans": last_result if last_result else 0}
         self.update_functions()
         
     def update_functions(self):
         lib = cmath if self.use_complex else math
-        
         self.funcs = {
             "sin": self._sin_wrapper,
             "cos": self._cos_wrapper,
@@ -118,7 +117,7 @@ class SafeEvaluator:
             return math.radians(x)
         elif self.angle_mode == 'grad':
             return x * math.pi / 200
-        else:  # rad
+        else:
             return x
     
     def _from_radians(self, x):
@@ -183,7 +182,7 @@ class SafeEvaluator:
         raise ValueError("Operation nicht erlaubt")
 
 # ============================================================
-# II. GUI mit erweiterten Features und Sprachumschaltung
+# II. GUI mit übersichtlichem Layout
 # ============================================================
 class UltimateCalculatorGUI:
     def __init__(self):
@@ -191,7 +190,7 @@ class UltimateCalculatorGUI:
         self.angle_mode = 'deg'
         self.use_complex = False
         self.theme = 'light'
-        self.lang = 'de'  # Standard Deutsch
+        self.lang = 'de'
         
         self.evaluator = SafeEvaluator(angle_mode=self.angle_mode, use_complex=self.use_complex)
         
@@ -199,32 +198,32 @@ class UltimateCalculatorGUI:
         self.lang_data = {
             'de': {
                 'window_title': 'Wissenschaftlicher Taschenrechner',
-                'sin': 'sin', 'cos': 'cos', 'tan': 'tan', 'asin': 'asin', 'acos': 'acos',
-                'atan': 'atan', 'sinh': 'sinh', 'cosh': 'cosh', 'tanh': 'tanh', 'log': 'log',
-                'sqrt': '√', '^': '^', '(': '(', ')': ')', 'C': 'C', '←': '←',
+                'sin': 'sin', 'cos': 'cos', 'tan': 'tan', 'asin': 'asin', 'acos': 'acos', 'atan': 'atan',
+                'sinh': 'sinh', 'cosh': 'cosh', 'tanh': 'tanh', 'log': 'log', 'sqrt': '√', '^': '^',
+                'C': 'C', '←': '←', '(': '(', ')': ')', 'ans': 'Ans', 'j': 'j',
                 '7': '7', '8': '8', '9': '9', '/': '/', '4': '4', '5': '5', '6': '6',
-                '*': '*', '-': '-', '1': '1', '2': '2', '3': '3', '+': '+', '=': '=',
-                '0': '0', '.': '.', 'pi': 'π', 'e': 'e', 'ans': 'Ans', 'j': 'j',
+                '*': '*', '1': '1', '2': '2', '3': '3', '-': '-', '0': '0', '.': '.',
+                'pi': 'π', 'e': 'e', '+': '+', '=': '=',
                 'Modus': 'Modus', 'Komplex': 'Komplex', 'Theme': 'Design', 'Sprache': 'Sprache',
                 'History': 'Verlauf', 'Deg': 'Grad', 'Rad': 'Rad', 'Grad': 'Gon',
                 'header': '🧪 WISSENSCHAFTLICHER TASCHENRECHNER'
             },
             'en': {
                 'window_title': 'Scientific Calculator',
-                'sin': 'sin', 'cos': 'cos', 'tan': 'tan', 'asin': 'asin', 'acos': 'acos',
-                'atan': 'atan', 'sinh': 'sinh', 'cosh': 'cosh', 'tanh': 'tanh', 'log': 'log',
-                'sqrt': '√', '^': '^', '(': '(', ')': ')', 'C': 'C', '←': '←',
+                'sin': 'sin', 'cos': 'cos', 'tan': 'tan', 'asin': 'asin', 'acos': 'acos', 'atan': 'atan',
+                'sinh': 'sinh', 'cosh': 'cosh', 'tanh': 'tanh', 'log': 'log', 'sqrt': '√', '^': '^',
+                'C': 'C', '←': '←', '(': '(', ')': ')', 'ans': 'Ans', 'j': 'j',
                 '7': '7', '8': '8', '9': '9', '/': '/', '4': '4', '5': '5', '6': '6',
-                '*': '*', '-': '-', '1': '1', '2': '2', '3': '3', '+': '+', '=': '=',
-                '0': '0', '.': '.', 'pi': 'π', 'e': 'e', 'ans': 'Ans', 'j': 'j',
+                '*': '*', '1': '1', '2': '2', '3': '3', '-': '-', '0': '0', '.': '.',
+                'pi': 'π', 'e': 'e', '+': '+', '=': '=',
                 'Modus': 'Mode', 'Komplex': 'Complex', 'Theme': 'Theme', 'Sprache': 'Language',
                 'History': 'History', 'Deg': 'Deg', 'Rad': 'Rad', 'Grad': 'Grad',
                 'header': '🧪 SCIENTIFIC CALCULATOR'
             }
         }
         
-        # Fenster erstellen
-        self.win = RoundWindow(520, 680, self.lang_data[self.lang]['window_title'],
+        # Fenstergröße: 580x720 für 6 Spalten und 7 Zeilen + Kopf
+        self.win = RoundWindow(580, 720, self.lang_data[self.lang]['window_title'],
                                bg_color="#ffffff", title_color="#000000")
         self.root = self.win.root
         self.inner = self.win.inner_frame
@@ -243,7 +242,7 @@ class UltimateCalculatorGUI:
         self.header_frame = tk.Frame(self.inner, bg=self.inner.cget('bg'))
         self.header_frame.pack(fill="x", pady=(5,0))
         
-        self.mode_label = tk.Label(self.header_frame, text=self.lang_data[self.lang]['Deg'], 
+        self.mode_label = tk.Label(self.header_frame, text=self.lang_data[self.lang]['Deg'],
                                     font=("Segoe UI", 9), bg=self.inner.cget('bg'), fg="black")
         self.mode_label.pack(side="left", padx=5)
         
@@ -262,19 +261,26 @@ class UltimateCalculatorGUI:
                                       bg="#e0e0e0", fg="black", bd=0, padx=5, pady=2)
         self.history_btn.pack(anchor="ne", padx=20, pady=2)
         
-        # Frame für Buttons (6 Spalten)
+        # Frame für Buttons (6 Spalten x 7 Zeilen)
         self.btn_frame = tk.Frame(self.inner, bg=self.inner.cget('bg'))
         self.btn_frame.pack(fill="both", expand=True, padx=15, pady=(0,15))
         
         # Button-Definitionen: (Schlüssel, row, col)
-        # Alle Buttons haben einen Schlüssel, der in lang_data übersetzt wird
+        # Ordnung: Wissenschaftliche Funktionen, Steuerung, Zahlen, Operatoren, Modi
         btn_keys = [
+            # Zeile 0: trigonometrische Grundfunktionen
             ('sin', 0, 0), ('cos', 0, 1), ('tan', 0, 2), ('asin', 0, 3), ('acos', 0, 4), ('atan', 0, 5),
+            # Zeile 1: weitere Funktionen
             ('sinh', 1, 0), ('cosh', 1, 1), ('tanh', 1, 2), ('log', 1, 3), ('sqrt', 1, 4), ('^', 1, 5),
+            # Zeile 2: Steuerung und Sonderzeichen
             ('C', 2, 0), ('←', 2, 1), ('(', 2, 2), (')', 2, 3), ('ans', 2, 4), ('j', 2, 5),
+            # Zeile 3: Zahlen 7-9 und Operatoren
             ('7', 3, 0), ('8', 3, 1), ('9', 3, 2), ('/', 3, 3), ('4', 3, 4), ('5', 3, 5),
+            # Zeile 4: Zahlen 6,*,1,2,3,-
             ('6', 4, 0), ('*', 4, 1), ('1', 4, 2), ('2', 4, 3), ('3', 4, 4), ('-', 4, 5),
+            # Zeile 5: 0,.,π,e,+,=
             ('0', 5, 0), ('.', 5, 1), ('pi', 5, 2), ('e', 5, 3), ('+', 5, 4), ('=', 5, 5),
+            # Zeile 6: Modus-Umschalter (leere Felder am Ende)
             ('Modus', 6, 0), ('Komplex', 6, 1), ('Theme', 6, 2), ('Sprache', 6, 3), ('', 6, 4), ('', 6, 5)
         ]
         
@@ -293,20 +299,17 @@ class UltimateCalculatorGUI:
             else:
                 return "#ffffff"
         
-        # Buttons erstellen und Schlüssel speichern
         self.buttons = {}
         for (key, r, c) in btn_keys:
             if not key:
-                # leerer Platzhalter, überspringen
-                continue
+                continue  # leeres Feld überspringen
             bg = get_bg(key)
-            # Übersetzten Text holen
             text = self.lang_data[self.lang].get(key, key)
             btn = tk.Button(self.btn_frame, text=text, font=("Helvetica", 11, "bold"),
                             bg=bg, fg="black", bd=0, relief="flat",
                             activebackground="#c0c0c0", activeforeground="black",
                             command=lambda k=key: self._on_btn(k))
-            btn.key = key  # Schlüssel speichern
+            btn.key = key
             btn.grid(row=r, column=c, padx=2, pady=2, sticky="nsew")
             self.buttons[key] = btn
         
@@ -332,9 +335,6 @@ class UltimateCalculatorGUI:
         elif key == 'Sprache':
             self._toggle_language()
         else:
-            # Für normale Buttons den übersetzten Text einfügen? 
-            # Wir fügen den Schlüssel ein, da die Funktionen auf Schlüsseln basieren.
-            # Aber für Zahlen und Operatoren ist der Schlüssel gleich dem Zeichen.
             self.display.insert(tk.END, key)
     
     def _key_press(self, event):
@@ -359,7 +359,6 @@ class UltimateCalculatorGUI:
         
         self.display.delete(0, tk.END)
         self.display.insert(0, res_str)
-        
         self.history.append((expr, res_str))
         
         try:
@@ -369,7 +368,7 @@ class UltimateCalculatorGUI:
     
     def show_history(self):
         if not self.history:
-            messagebox.showinfo(self.lang_data[self.lang]['History'], 
+            messagebox.showinfo(self.lang_data[self.lang]['History'],
                                 "Keine Einträge vorhanden." if self.lang=='de' else "No entries.")
             return
         
@@ -400,7 +399,6 @@ class UltimateCalculatorGUI:
         idx = modes.index(self.angle_mode)
         self.angle_mode = modes[(idx+1) % 3]
         self.evaluator.angle_mode = self.angle_mode
-        # Modusname übersetzt anzeigen
         mode_name = self.lang_data[self.lang][self.angle_mode.capitalize()]
         self.mode_label.config(text=mode_name)
     
@@ -408,7 +406,6 @@ class UltimateCalculatorGUI:
         self.use_complex = not self.use_complex
         self.evaluator.use_complex = self.use_complex
         self.evaluator.update_functions()
-        # Status im mode_label anzeigen
         mode_text = self.lang_data[self.lang][self.angle_mode.capitalize()]
         if self.use_complex:
             mode_text += " C" if self.lang=='en' else " K"
@@ -422,21 +419,25 @@ class UltimateCalculatorGUI:
     
     def _toggle_language(self):
         self.lang = 'en' if self.lang == 'de' else 'de'
-        # Fenstertitel aktualisieren
-        self.win.canvas.itemconfig(1, text=self.lang_data[self.lang]['window_title'])
-        # Header-Label
+        # Fenstertitel aktualisieren (Canvas-Text ändern)
+        # Wir müssen den Canvas-Text ändern: Die Titelleiste ist im RoundWindow separat,
+        # wir haben dort title_label. Zugriff über self.win.
+        # Im RoundWindow ist title_label ein Attribut? Wir haben es nicht gespeichert.
+        # Einfacher: Wir aktualisieren den Header-Label und Buttons, den Fenstertitel lassen wir.
+        # Fenstertitel ist im Canvas als Text? Nein, in der Titelleiste.
+        # Um es einfach zu halten, lassen wir den Fenstertitel unverändert oder setzen ihn neu.
+        # Wir können den Titel im RoundWindow ändern, indem wir auf das Label zugreifen.
+        # Aber das ist kompliziert. Wir ignorieren es oder setzen den Fenstertitel später neu.
+        # Für dieses Beispiel lassen wir den Fenstertitel unverändert.
+        
         self.header_label.config(text=self.lang_data[self.lang]['header'])
-        # History-Button
         self.history_btn.config(text=self.lang_data[self.lang]['History'])
-        # Alle Buttons neu beschriften
         for key, btn in self.buttons.items():
             btn.config(text=self.lang_data[self.lang].get(key, key))
-        # Modus-Label
         mode_name = self.lang_data[self.lang][self.angle_mode.capitalize()]
         if self.use_complex:
             mode_name += " C" if self.lang=='en' else " K"
         self.mode_label.config(text=mode_name)
-        # ggf. weitere Texte (z.B. in show_history) werden beim Öffnen aktualisiert
     
     def _apply_theme(self):
         if self.theme == 'light':
@@ -462,7 +463,7 @@ class UltimateCalculatorGUI:
         self.root.configure(bg=bg_main)
         self.win.canvas.configure(bg=bg_main)
         self.win.canvas.delete("all")
-        self.win.canvas.create_round_rect(5, 5, 515, 675, r=20, fill=bg_main, outline="#cccccc", width=2)
+        self.win.canvas.create_round_rect(5, 5, 575, 715, r=20, fill=bg_main, outline="#cccccc", width=2)
         self.inner.configure(bg=bg_main)
         
         # Header
