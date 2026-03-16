@@ -1,5 +1,78 @@
-import ast, operator, math
+#!/usr/bin/env python
+# -*- coding: utf-8 -*-
+
+# ===== Konsole sofort verstecken (für .pyw) =====
+import sys
+import ctypes
+
+if sys.platform == "win32":
+    kernel32 = ctypes.WinDLL('kernel32', use_last_error=True)
+    kernel32.FreeConsole()
+
+import ast
+import operator
+import math
 import tkinter as tk
+
+# ============================================================
+# Hilfsfunktion für abgerundete Rechtecke
+# ============================================================
+def _create_round_rect(self, x1, y1, x2, y2, r=25, **kwargs):
+    points = (x1+r, y1, x1+r, y1, x2-r, y1, x2-r, y1, x2, y1,
+              x2, y1+r, x2, y1+r, x2, y2-r, x2, y2-r, x2, y2,
+              x2-r, y2, x2-r, y2, x1+r, y2, x1+r, y2, x1, y2,
+              x1, y2-r, x1, y2-r, x1, y1+r, x1, y1+r, x1, y1)
+    return self.create_polygon(points, smooth=True, **kwargs)
+
+tk.Canvas.create_round_rect = _create_round_rect
+
+# ============================================================
+# Custom Fensterklasse mit abgerundeten Ecken
+# ============================================================
+class RoundWindow:
+    def __init__(self, width, height, title, bg_color="#121212", title_color="#2196F3"):
+        self.root = tk.Toplevel() if tk._default_root else tk.Tk()
+        self.root.overrideredirect(True)
+        self.root.geometry(f"{width}x{height}+300+200")
+        self.root.configure(bg=bg_color)
+
+        # Canvas für Hintergrund mit abgerundeten Ecken
+        self.canvas = tk.Canvas(self.root, width=width, height=height, bg=bg_color, highlightthickness=0)
+        self.canvas.pack()
+        self.canvas.create_round_rect(5, 5, width-5, height-5, r=20, fill=bg_color, outline="#4a4a4a", width=2)
+
+        # Eigene Titelleiste
+        title_bar = tk.Frame(self.root, bg=bg_color, height=30)
+        title_bar.place(x=10, y=10, width=width-20)
+
+        title_label = tk.Label(title_bar, text=title, font=("Segoe UI", 10, "bold"),
+                               fg=title_color, bg=bg_color)
+        title_label.pack(side="left", padx=10)
+
+        close_btn = tk.Button(title_bar, text="✕", font=("Segoe UI", 10, "bold"),
+                              fg="white", bg=bg_color, bd=0, activebackground="#c42b1c",
+                              activeforeground="white", cursor="hand2",
+                              command=self.root.destroy)
+        close_btn.pack(side="right", padx=10)
+
+        # Verschieben
+        title_bar.bind("<ButtonPress-1>", self.start_move)
+        title_bar.bind("<B1-Motion>", self.do_move)
+        title_label.bind("<ButtonPress-1>", self.start_move)
+        title_label.bind("<B1-Motion>", self.do_move)
+
+        # Innenbereich für Widgets (auf dem Canvas)
+        self.inner_frame = tk.Frame(self.root, bg=bg_color)
+        self.inner_frame.place(x=15, y=50, width=width-30, height=height-70)
+
+    def start_move(self, event):
+        self.drag_x = event.x_root - self.root.winfo_x()
+        self.drag_y = event.y_root - self.root.winfo_y()
+
+    def do_move(self, event):
+        x = event.x_root - self.drag_x
+        y = event.y_root - self.drag_y
+        self.root.geometry(f"+{x}+{y}")
 
 # ============================================================
 # I. SICHERHEIT & MATHEMATIK (Der AST-Kern mit Funktionen)
@@ -11,7 +84,6 @@ class SafeEvaluator:
             ast.Mult: operator.mul, ast.Div: operator.truediv,
             ast.Pow: operator.pow, ast.USub: operator.neg
         }
-        # NEU: Erlaubte mathematische Funktionen
         self.funcs = {
             "sin": math.sin, "cos": math.cos, "tan": math.tan,
             "sqrt": math.sqrt, "log": math.log
@@ -20,7 +92,6 @@ class SafeEvaluator:
 
     def evaluate(self, expr):
         try:
-            # ^ wird zu ** (Python-Syntax für Hochrechnen)
             expr = expr.replace("€", "").replace("%", "/100").replace("^", "**")
             tree = ast.parse(expr, mode="eval")
             return self._eval_node(tree.body)
@@ -34,7 +105,6 @@ class SafeEvaluator:
             return self.ops[type(node.op)](self._eval_node(node.left), self._eval_node(node.right))
         if isinstance(node, ast.UnaryOp):
             return self.ops[type(node.op)](self._eval_node(node.operand))
-        # NEU: Funktionsaufrufe verarbeiten (z.B. sin(90))
         if isinstance(node, ast.Call):
             if isinstance(node.func, ast.Name) and node.func.id in self.funcs:
                 args = [self._eval_node(arg) for arg in node.args]
@@ -42,30 +112,26 @@ class SafeEvaluator:
         raise ValueError("Operation nicht erlaubt")
 
 # ============================================================
-# II. HIGH-END GUI (Wissenschaftlich erweitert)
+# II. HIGH-END GUI (angepasst für RoundWindow)
 # ============================================================
 class UltimateCalculatorGUI:
-    def __init__(self, root):
-        self.root = root
-        self.root.title("Pro Calculator")
-        self.root.geometry("450x550") # Etwas breiter für 5 Spalten
-        self.root.configure(bg="#121212")
+    def __init__(self):
+        # Abgerundetes Fenster erstellen
+        self.win = RoundWindow(450, 550, "🧪 SCIENTIFIC PRO CALCULATOR", bg_color="#121212", title_color="#2196F3")
+        self.root = self.win.root
+        self.inner = self.win.inner_frame
 
         self.evaluator = SafeEvaluator()
         self._build_ui()
 
     def _build_ui(self):
-        # Header
-        header = tk.Label(self.root, text="🧪 SCIENTIFIC PRO CALCULATOR", bg="#121212", fg="#2196F3", font=("Helvetica", 10, "bold"))
-        header.pack(pady=(15, 0))
-
         # Display
-        self.display = tk.Entry(self.root, font=("Helvetica", 32), bg="#121212", fg="white", bd=0, justify="right")
-        self.display.pack(fill="x", padx=20, pady=20)
+        self.display = tk.Entry(self.inner, font=("Helvetica", 32), bg="#121212", fg="white", bd=0, justify="right")
+        self.display.pack(fill="x", padx=10, pady=(10, 20))
 
         # Button-Grid (5 Spalten x 6 Zeilen)
-        btn_frame = tk.Frame(self.root, bg="#121212")
-        btn_frame.pack(fill="both", expand=True, padx=15, pady=(0, 15))
+        btn_frame = tk.Frame(self.inner, bg="#121212")
+        btn_frame.pack(fill="both", expand=True)
 
         buttons = [
             ('sin(', 0, 0, "#333333"), ('cos(', 0, 1, "#333333"), ('tan(', 0, 2, "#333333"), ('sqrt(', 0, 3, "#333333"), ('^', 0, 4, "#333333"),
@@ -77,10 +143,9 @@ class UltimateCalculatorGUI:
         ]
 
         for (txt, r, c, clr) in buttons:
-            # Das '=' Zeichen wird breiter gemacht (spannt über 3 Spalten)
             colspan = 3 if txt == '=' else 1
-            
-            btn = tk.Button(btn_frame, text=txt.replace('(', ''), font=("Helvetica", 14, "bold"), bg=clr, fg="white", bd=0, 
+            btn = tk.Button(btn_frame, text=txt.replace('(', ''), font=("Helvetica", 14, "bold"),
+                            bg=clr, fg="white", bd=0,
                             command=lambda t=txt: self._on_btn(t))
             btn.grid(row=r, column=c, columnspan=colspan, padx=2, pady=2, sticky="nsew")
 
@@ -88,31 +153,26 @@ class UltimateCalculatorGUI:
         for i in range(6): btn_frame.rowconfigure(i, weight=1)
 
     def _on_btn(self, char):
-        if char == 'C': 
+        if char == 'C':
             self.display.delete(0, tk.END)
-        elif char == '←': 
+        elif char == '←':
             self.display.delete(len(self.display.get())-1)
-        elif char == '=': 
+        elif char == '=':
             self._calc()
-        else: 
+        else:
             self.display.insert(tk.END, char)
 
     def _calc(self):
         res = self.evaluator.evaluate(self.display.get())
-        
-        # Rundung bei minimalen Float-Fehlern (z.B. sin(pi) sollte 0 sein, nicht 1.22e-16)
         if isinstance(res, float) and abs(res) < 1e-10:
             res = 0.0
-            
         self.display.delete(0, tk.END)
         self.display.insert(0, str(res))
-        
         try:
             self.evaluator.vars["ans"] = float(res)
         except ValueError:
-            pass 
+            pass
 
 if __name__ == "__main__":
-    root = tk.Tk()
-    app = UltimateCalculatorGUI(root)
-    root.mainloop()
+    app = UltimateCalculatorGUI()
+    app.root.mainloop()
