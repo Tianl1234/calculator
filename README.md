@@ -106,13 +106,4 @@ The window has a custom title bar. You can **drag** it by clicking and holding t
 | **History window is blank** | You haven’t performed any calculations yet – history is stored only after pressing `=`. |
 | **I want even more functions** | The `SafeEvaluator` can be extended easily. Add new functions to `self.funcs` in the `__init__` method. |
 
----
-
-## 📄 License
-
-This project is based on the AST‑evaluation idea and is provided under the **GNU General Public License (GPL)**.  
-Feel free to modify and share it.
-
----
-
 Enjoy calculating! 😊
