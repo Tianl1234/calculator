@@ -1,25 +1,25 @@
-# 🧮 Scientific Calculator with GUI
+# 🧪 Scientific Calculator – Modern GUI with Advanced Features
 
-A fully‑featured scientific calculator built with Python and `tkinter`.  
-It offers a clean, modern interface with rounded corners, multiple themes, language switching, and an **unbeatable evaluation engine** based on Python’s AST – so it’s safe and fast.
+A fully featured scientific calculator built with Python and `tkinter`.  
+It offers a clean, responsive interface with **rounded corners**, **light/dark/blue themes**, **complex number support**, **angle unit selection**, **calculation history**, and **bilingual interface** (German/English).  
+The evaluation engine uses Python’s `ast` module for safe expression parsing – no risky `eval()` calls.
 
 ---
 
 ## ✨ Features
 
-- **Safe evaluation** – uses Python’s `ast` module; no `eval()` risks.  
-- **Trigonometrical functions** (sin, cos, tan, asin, acos, atan) with **Deg / Rad / Grad** mode.  
-- **Hyperbolic functions** (sinh, cosh, tanh).  
-- **Logarithms** (log, log10) and **exponential** (exp).  
-- **Square root** and **power** (^).  
-- **Complex number support** – toggle with the “Complex” button (uses `cmath`).  
-- **Constants**: π (pi), e, and Ans (last result).  
-- **History** – view your last 20 calculations.  
-- **Keyboard support** – type numbers and operators directly.  
-- **Theme switcher** – Light, Dark, and Blue.  
-- **Language** – Deutsch / English toggle.  
-- **Rounded corners** and a custom title bar – you can drag the window.  
-- **No console window** – the script hides it automatically (even without `.pyw`).
+- **Safe evaluation** – uses Python’s `ast` to parse and evaluate mathematical expressions.
+- **Trigonometric functions** – `sin`, `cos`, `tan`, `asin`, `acos`, `atan` with **Deg / Rad / Grad** mode.
+- **Hyperbolic functions** – `sinh`, `cosh`, `tanh`.
+- **Logarithms & powers** – `log`, `log10`, `exp`, `sqrt`, `^` (power).
+- **Complex numbers** – toggle with the **Complex** button; functions from `cmath` are used.
+- **Constants** – `π` (pi), `e`, and `Ans` (last result).
+- **History** – view your last 20 calculations in a separate window.
+- **Keyboard support** – type numbers and operators directly, use **Enter** to calculate, **Escape** to clear, **Backspace** to delete last character.
+- **Themes** – switch between **Light**, **Dark**, and **Blue** themes on the fly.
+- **Language toggle** – switch between **German** and **English** instantly.
+- **Modern window** – rounded corners, custom title bar, draggable.
+- **No console window** – the terminal is hidden automatically (even without `.pyw`).
 
 ---
 
@@ -33,11 +33,12 @@ It offers a clean, modern interface with rounded corners, multiple themes, langu
 
 ## 🚀 How to Run
 
-1. Save the script as `calculator.py` (or any name you like).  
-2. Double‑click the file – the calculator window opens immediately.  
-   - If you prefer the terminal, you can run `python calculator.py` – the console window will still be hidden after a moment.
+1. **Save the script** as `calculator.py` (or any name you like).  
+2. **Double‑click** the file – the calculator window opens immediately.  
+3. Start typing or click the buttons.  
+4. Use the **Mode** button to change angle units, **Complex** to enable/disable complex arithmetic, **Theme** to change colors, and **Sprache / Language** to switch between German and English.
 
-That’s it! No extra steps, no package installation.
+> 💡 The console window is hidden automatically, so the calculator runs quietly in the background.
 
 ---
 
@@ -45,7 +46,7 @@ That’s it! No extra steps, no package installation.
 
 ### Main Display
 - Shows your current expression and result.  
-- You can type directly into it (keyboard support).  
+- You can type directly into the entry field (keyboard support).
 
 ### Buttons
 - **C** – clear everything.  
@@ -61,49 +62,48 @@ That’s it! No extra steps, no package installation.
 - **Ans** – inserts the last calculated result.  
 - **j** – imaginary unit (for complex numbers).  
 - **( )** – parentheses.  
-- **0–9, ., +, -, *, /** – basic arithmetic.  
+- **0–9, ., +, -, *, /** – basic arithmetic.
 
 ### Mode Buttons (bottom row)
 - **Modus / Mode** – cycles through **Deg** (degrees), **Rad** (radians), **Grad** (gons).  
 - **Komplex / Complex** – toggles complex‑number mode (uses `cmath`).  
 - **Theme / Design** – cycles through Light, Dark, and Blue themes.  
-- **Sprache / Language** – switches between German and English.  
+- **Sprache / Language** – switches between German and English.
 
 ### Keyboard Shortcuts
 - **Numbers and operators** – type directly.  
 - **Enter** – calculate (same as `=`).  
 - **Escape** – clear all (same as `C`).  
-- **Backspace** – delete last character (same as `←`).  
+- **Backspace** – delete last character (same as `←`).
 
 ### History
-Click the **“Verlauf”** (or **“History”**) button in the top‑right corner. A new window shows the last 20 calculations. Double‑clicking an entry is not supported, but you can copy the expression manually.
+Click the **History** button (top‑right corner). A new window shows the last 20 calculations. You can scroll through them, but entries are read‑only.
 
 ---
 
-## 🛠️ Customisation
+## ⚙️ Configuration
 
-### Themes
-The **Theme** button cycles through three colour schemes:
-- **Light** – clean white background, grey buttons.  
-- **Dark** – dark grey background, light text.  
-- **Blue** – light blue background, blue accents.  
-
-### Language
-The **Sprache/Language** button toggles between German and English. All button labels, headers, and messages are translated instantly.
-
-### Window
-The window has a custom title bar. You can **drag** it by clicking and holding the title text or the bar itself. The close button (✕) ends the program.
+All settings are accessible through the GUI buttons; no configuration file is required.  
+The theme, language, angle mode, and complex mode are applied immediately and persist only for the current session.
 
 ---
 
-## ❓ Troubleshooting
+## 🐛 Troubleshooting
 
 | Problem | Solution |
 |--------|----------|
-| **Nothing happens when I double‑click** | Make sure Python is installed correctly. Open a terminal and run `python --version`. If that works, try running the script from the terminal with `python your_script.py` to see error messages. |
-| **The window appears but looks wrong** | The script was designed for a screen resolution of at least 1280×720. If parts are cut off, increase the window size by editing the `RoundWindow` dimensions in the code. |
-| **Complex mode gives unexpected results** | Remember that in complex mode, functions like `sqrt(-1)` return complex numbers. The display shows them as `(0+1j)` etc. |
-| **History window is blank** | You haven’t performed any calculations yet – history is stored only after pressing `=`. |
-| **I want even more functions** | The `SafeEvaluator` can be extended easily. Add new functions to `self.funcs` in the `__init__` method. |
+| **Nothing happens when I double‑click** | Make sure Python is installed. Open a terminal and run `python --version`. If that works, run the script from the terminal with `python calculator.py` to see error messages. |
+| **The window appears but has no title bar** | The custom title bar is part of the design – you can still drag the window by clicking the title text or the bar itself. |
+| **Complex numbers give strange results** | In complex mode, functions like `sqrt(-1)` return `1j`. If you don’t need complex numbers, keep the **Complex** button off. |
+| **History window is empty** | You haven’t performed any calculations yet – history is stored only after pressing `=`. |
+| **I want more functions** | The `SafeEvaluator` can be extended easily. Add new functions to the `funcs` dictionary in the `__init__` method. |
 
-Enjoy calculating! 😊
+---
+
+## 📄 License
+
+This project is open‑source and free to use. No warranty.
+
+---
+
+Enjoy calculating! 🎉
