@@ -21,11 +21,30 @@ if sys.platform == "win32":
 # Hilfsfunktion für abgerundete Rechtecke (Canvas)
 # ------------------------------------------------------------
 def _create_round_rect(self, x1, y1, x2, y2, r=25, **kwargs):
-    points = (x1+r, y1, x1+r, y1, x2-r, y1, x2-r, y1, x2, y1,
-              x2, y1+r, x2, y1+r, x2, y2-r, x2, y2-r, x2, y2,
-              x2-r, y2, x2-r, y2, x1+r, y2, x1+r, y2, x1, y2,
-              x1, y2-r, x1, y2-r, x1, y1+r, x1, y1+r, x1, y1)
-    return self.create_polygon(points, smooth=True, **kwargs)
+    """Create a rounded rectangle"""
+    fill = kwargs.get('fill', 'white')
+    outline = kwargs.get('outline', 'black')
+    width = kwargs.get('width', 1)
+    
+    r = min(r, (x2 - x1) // 2, (y2 - y1) // 2)
+    
+    # Center rectangles for fill
+    self.create_rectangle(x1+r, y1, x2-r, y2, fill=fill, outline='')
+    self.create_rectangle(x1, y1+r, x2, y2-r, fill=fill, outline='')
+    
+    # Four corner arcs (both fill and outline in one)
+    self.create_arc(x1, y1, x1+2*r, y1+2*r, start=90, extent=90, fill=fill, outline=outline, width=width)
+    self.create_arc(x2-2*r, y1, x2, y1+2*r, start=0, extent=90, fill=fill, outline=outline, width=width)
+    self.create_arc(x2-2*r, y2-2*r, x2, y2, start=270, extent=90, fill=fill, outline=outline, width=width)
+    self.create_arc(x1, y2-2*r, x1+2*r, y2, start=180, extent=90, fill=fill, outline=outline, width=width)
+    
+    # Straight edges with outline
+    self.create_line(x1+r, y1, x2-r, y1, fill=outline, width=width)
+    self.create_line(x2, y1+r, x2, y2-r, fill=outline, width=width)
+    self.create_line(x2-r, y2, x1+r, y2, fill=outline, width=width)
+    self.create_line(x1, y2-r, x1, y1+r, fill=outline, width=width)
+    
+    return None
 
 tk.Canvas.create_round_rect = _create_round_rect
 
@@ -340,7 +359,10 @@ class UltimateCalculatorGUI:
     
     def _on_btn(self, key):
         if key == 'C': self.display.delete(0, tk.END)
-        elif key == '←': self.display.delete(len(self.display.get())-1, tk.END)
+        elif key == '←':
+            current = self.display.get()
+            if current:
+                self.display.delete(len(current)-1, tk.END)
         elif key == '=': self._calc()
         elif key == 'Modus': self._cycle_angle_mode()
         elif key == 'Komplex': self._toggle_complex()
@@ -356,6 +378,11 @@ class UltimateCalculatorGUI:
     def _calc(self):
         expr = self.display.get()
         res = self.evaluator.evaluate(expr)
+        
+        if isinstance(res, str):
+            self.display.delete(0, tk.END)
+            self.display.insert(0, res)
+            return
         
         if isinstance(res, float):
             if abs(res) < 1e-10: res = 0.0
@@ -404,6 +431,7 @@ class UltimateCalculatorGUI:
         self.angle_mode = modes[(idx+1) % 3]
         self.evaluator.angle_mode = self.angle_mode
         mode_name = self.lang_data[self.lang][self.angle_mode.capitalize()]
+        if self.use_complex: mode_name += " C" if self.lang=='en' else " K"
         self.mode_label.config(text=mode_name)
     
     def _toggle_complex(self):
