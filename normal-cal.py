@@ -1,10 +1,6 @@
 #!/usr/bin/env python
 # -*- coding: utf-8 -*-
 
-# ===== Wissenschaftlicher Taschenrechner mit übersichtlichem Layout =====
-# Features: Verlauf, Tastatur, Winkelmodus, komplexe Zahlen, Themes,
-#           Deutsch/Englisch Umschaltung, abgerundete Ecken, klares Raster.
-
 import sys
 import ctypes
 import ast
@@ -34,7 +30,63 @@ def _create_round_rect(self, x1, y1, x2, y2, r=25, **kwargs):
 tk.Canvas.create_round_rect = _create_round_rect
 
 # ------------------------------------------------------------
-# Custom Fensterklasse mit abgerundeten Ecken und Titelleiste
+# NEU: Custom Klasse für Buttons mit RUNDEN Ecken!
+# ------------------------------------------------------------
+class RoundedButton(tk.Canvas):
+    def __init__(self, parent, text="", command=None, bg="#ffffff", fg="#000000", radius=15, **kwargs):
+        super().__init__(parent, bg=parent.cget('bg'), highlightthickness=0, bd=0, **kwargs)
+        self.text_val = text
+        self.command = command
+        self.bg_color = bg
+        self.fg_color = fg
+        self.radius = radius
+        
+        self.rect_id = self.create_polygon([0,0,0,0], smooth=True, fill=self.bg_color, outline="")
+        self.text_id = self.create_text(0, 0, text=self.text_val, fill=self.fg_color, font=("Helvetica", 11, "bold"))
+        
+        self.bind("<Configure>", self._on_resize)
+        self.bind("<ButtonPress-1>", self._on_press)
+        self.bind("<ButtonRelease-1>", self._on_release)
+
+    def _get_points(self, x1, y1, x2, y2, r):
+        return (x1+r, y1, x1+r, y1, x2-r, y1, x2-r, y1, x2, y1,
+                x2, y1+r, x2, y1+r, x2, y2-r, x2, y2-r, x2, y2,
+                x2-r, y2, x2-r, y2, x1+r, y2, x1+r, y2, x1, y2,
+                x1, y2-r, x1, y2-r, x1, y1+r, x1, y1+r, x1, y1)
+
+    def _on_resize(self, event):
+        w, h = event.width, event.height
+        pts = self._get_points(2, 2, w-2, h-2, self.radius)
+        self.coords(self.rect_id, *pts)
+        self.coords(self.text_id, w/2, h/2)
+        
+    def _on_press(self, event):
+        self.itemconfig(self.rect_id, fill="#909090") # Verdunkeln beim Klicken
+        
+    def _on_release(self, event):
+        self.itemconfig(self.rect_id, fill=self.bg_color)
+        if (0 <= event.x <= self.winfo_width()) and (0 <= event.y <= self.winfo_height()):
+            if self.command:
+                self.command()
+
+    def config(self, **kwargs):
+        self.configure(**kwargs)
+
+    def configure(self, **kwargs):
+        if 'bg' in kwargs:
+            self.bg_color = kwargs['bg']
+            self.itemconfig(self.rect_id, fill=self.bg_color)
+        if 'fg' in kwargs:
+            self.fg_color = kwargs['fg']
+            self.itemconfig(self.text_id, fill=self.fg_color)
+        if 'text' in kwargs:
+            self.text_val = kwargs['text']
+            self.itemconfig(self.text_id, text=self.text_val)
+        if 'canvas_bg' in kwargs:
+            super().configure(bg=kwargs['canvas_bg'])
+
+# ------------------------------------------------------------
+# Custom Fensterklasse mit abgerundeten Ecken
 # ------------------------------------------------------------
 class RoundWindow:
     def __init__(self, width, height, title, bg_color="#ffffff", title_color="#000000"):
@@ -52,9 +104,10 @@ class RoundWindow:
         title_bar = tk.Frame(self.root, bg=bg_color, height=30)
         title_bar.place(x=10, y=10, width=width-20)
         
-        title_label = tk.Label(title_bar, text=title, font=("Segoe UI", 10, "bold"),
-                               fg=title_color, bg=bg_color)
-        title_label.pack(side="left", padx=10)
+        # FIX für die Sprache: Label mit self. speichern
+        self.title_label = tk.Label(title_bar, text=title, font=("Segoe UI", 10, "bold"),
+                                    fg=title_color, bg=bg_color)
+        self.title_label.pack(side="left", padx=10)
         
         close_btn = tk.Button(title_bar, text="✕", font=("Segoe UI", 10, "bold"),
                               fg=title_color, bg=bg_color, bd=0, activebackground="#ffcccc",
@@ -64,8 +117,8 @@ class RoundWindow:
         
         title_bar.bind("<ButtonPress-1>", self.start_move)
         title_bar.bind("<B1-Motion>", self.do_move)
-        title_label.bind("<ButtonPress-1>", self.start_move)
-        title_label.bind("<B1-Motion>", self.do_move)
+        self.title_label.bind("<ButtonPress-1>", self.start_move)
+        self.title_label.bind("<B1-Motion>", self.do_move)
         
         self.inner_frame = tk.Frame(self.root, bg=bg_color)
         self.inner_frame.place(x=15, y=50, width=width-30, height=height-70)
@@ -80,7 +133,7 @@ class RoundWindow:
         self.root.geometry(f"+{x}+{y}")
 
 # ============================================================
-# I. SICHERER EVALUATOR (mit komplexen Zahlen und Winkelmodus)
+# I. SICHERER EVALUATOR
 # ============================================================
 class SafeEvaluator:
     def __init__(self, last_result=None, angle_mode='deg', use_complex=False):
@@ -97,36 +150,21 @@ class SafeEvaluator:
     def update_functions(self):
         lib = cmath if self.use_complex else math
         self.funcs = {
-            "sin": self._sin_wrapper,
-            "cos": self._cos_wrapper,
-            "tan": self._tan_wrapper,
-            "sqrt": lib.sqrt,
-            "log": lib.log,
-            "log10": lib.log10,
-            "exp": lib.exp,
-            "asin": self._asin_wrapper,
-            "acos": self._acos_wrapper,
-            "atan": self._atan_wrapper,
-            "sinh": lib.sinh,
-            "cosh": lib.cosh,
-            "tanh": lib.tanh,
+            "sin": self._sin_wrapper, "cos": self._cos_wrapper, "tan": self._tan_wrapper,
+            "sqrt": lib.sqrt, "log": lib.log, "log10": lib.log10, "exp": lib.exp,
+            "asin": self._asin_wrapper, "acos": self._acos_wrapper, "atan": self._atan_wrapper,
+            "sinh": lib.sinh, "cosh": lib.cosh, "tanh": lib.tanh,
         }
     
     def _to_radians(self, x):
-        if self.angle_mode == 'deg':
-            return math.radians(x)
-        elif self.angle_mode == 'grad':
-            return x * math.pi / 200
-        else:
-            return x
+        if self.angle_mode == 'deg': return math.radians(x)
+        elif self.angle_mode == 'grad': return x * math.pi / 200
+        else: return x
     
     def _from_radians(self, x):
-        if self.angle_mode == 'deg':
-            return math.degrees(x)
-        elif self.angle_mode == 'grad':
-            return x * 200 / math.pi
-        else:
-            return x
+        if self.angle_mode == 'deg': return math.degrees(x)
+        elif self.angle_mode == 'grad': return x * 200 / math.pi
+        else: return x
     
     def _sin_wrapper(self, x):
         lib = cmath if self.use_complex else math
@@ -161,13 +199,10 @@ class SafeEvaluator:
             return f"Fehler: {e}"
     
     def _eval_node(self, node):
-        if isinstance(node, ast.Constant):
-            return node.value
+        if isinstance(node, ast.Constant): return node.value
         if isinstance(node, ast.Name):
-            if node.id in self.vars:
-                return self.vars[node.id]
-            if node.id == 'j':
-                return 1j
+            if node.id in self.vars: return self.vars[node.id]
+            if node.id == 'j': return 1j
             return 0
         if isinstance(node, ast.BinOp):
             left = self._eval_node(node.left)
@@ -182,7 +217,7 @@ class SafeEvaluator:
         raise ValueError("Operation nicht erlaubt")
 
 # ============================================================
-# II. GUI mit übersichtlichem Layout
+# II. GUI
 # ============================================================
 class UltimateCalculatorGUI:
     def __init__(self):
@@ -194,7 +229,6 @@ class UltimateCalculatorGUI:
         
         self.evaluator = SafeEvaluator(angle_mode=self.angle_mode, use_complex=self.use_complex)
         
-        # Sprachdaten
         self.lang_data = {
             'de': {
                 'window_title': 'Wissenschaftlicher Taschenrechner',
@@ -222,13 +256,11 @@ class UltimateCalculatorGUI:
             }
         }
         
-        # Fenstergröße: 580x720 für 6 Spalten und 7 Zeilen + Kopf
         self.win = RoundWindow(580, 720, self.lang_data[self.lang]['window_title'],
                                bg_color="#ffffff", title_color="#000000")
         self.root = self.win.root
         self.inner = self.win.inner_frame
         
-        # Tastatur-Shortcuts
         self.root.bind("<Key>", self._key_press)
         self.root.bind("<Return>", lambda e: self._on_btn('='))
         self.root.bind("<Escape>", lambda e: self._on_btn('C'))
@@ -238,7 +270,6 @@ class UltimateCalculatorGUI:
         self._apply_theme()
     
     def _build_ui(self):
-        # Header mit Statusleiste
         self.header_frame = tk.Frame(self.inner, bg=self.inner.cget('bg'))
         self.header_frame.pack(fill="x", pady=(5,0))
         
@@ -250,121 +281,95 @@ class UltimateCalculatorGUI:
                                       font=("Segoe UI", 9, "bold"), bg=self.inner.cget('bg'), fg="#2196F3")
         self.header_label.pack(side="right", padx=5)
         
-        # Display
         self.display = tk.Entry(self.inner, font=("Helvetica", 32),
                                 bg="#f0f0f0", fg="black", bd=1, relief="solid", justify="right")
         self.display.pack(fill="x", padx=20, pady=10)
         
-        # History-Button
         self.history_btn = tk.Button(self.inner, text=self.lang_data[self.lang]['History'],
                                       font=("Segoe UI", 9), command=self.show_history,
                                       bg="#e0e0e0", fg="black", bd=0, padx=5, pady=2)
         self.history_btn.pack(anchor="ne", padx=20, pady=2)
         
-        # Frame für Buttons (6 Spalten x 7 Zeilen)
         self.btn_frame = tk.Frame(self.inner, bg=self.inner.cget('bg'))
         self.btn_frame.pack(fill="both", expand=True, padx=15, pady=(0,15))
         
-        # Button-Definitionen: (Schlüssel, row, col)
-        # Ordnung: Wissenschaftliche Funktionen, Steuerung, Zahlen, Operatoren, Modi
+        # NEUES LOGISCHES LAYOUT (Wie auf einem echten Taschenrechner!)
         btn_keys = [
-            # Zeile 0: trigonometrische Grundfunktionen
-            ('sin', 0, 0), ('cos', 0, 1), ('tan', 0, 2), ('asin', 0, 3), ('acos', 0, 4), ('atan', 0, 5),
-            # Zeile 1: weitere Funktionen
-            ('sinh', 1, 0), ('cosh', 1, 1), ('tanh', 1, 2), ('log', 1, 3), ('sqrt', 1, 4), ('^', 1, 5),
-            # Zeile 2: Steuerung und Sonderzeichen
-            ('C', 2, 0), ('←', 2, 1), ('(', 2, 2), (')', 2, 3), ('ans', 2, 4), ('j', 2, 5),
-            # Zeile 3: Zahlen 7-9 und Operatoren
-            ('7', 3, 0), ('8', 3, 1), ('9', 3, 2), ('/', 3, 3), ('4', 3, 4), ('5', 3, 5),
-            # Zeile 4: Zahlen 6,*,1,2,3,-
-            ('6', 4, 0), ('*', 4, 1), ('1', 4, 2), ('2', 4, 3), ('3', 4, 4), ('-', 4, 5),
-            # Zeile 5: 0,.,π,e,+,=
-            ('0', 5, 0), ('.', 5, 1), ('pi', 5, 2), ('e', 5, 3), ('+', 5, 4), ('=', 5, 5),
-            # Zeile 6: Modus-Umschalter (leere Felder am Ende)
-            ('Modus', 6, 0), ('Komplex', 6, 1), ('Theme', 6, 2), ('Sprache', 6, 3), ('', 6, 4), ('', 6, 5)
+            # Zeile 0: Modi und Steuerung
+            ('Modus', 0, 0), ('Komplex', 0, 1), ('Theme', 0, 2), ('Sprache', 0, 3), ('', 0, 4), ('', 0, 5),
+            # Zeile 1: Trigonometrie
+            ('sin', 1, 0), ('cos', 1, 1), ('tan', 1, 2), ('asin', 1, 3), ('acos', 1, 4), ('atan', 1, 5),
+            # Zeile 2: Weitere Mathematik
+            ('sinh', 2, 0), ('cosh', 2, 1), ('tanh', 2, 2), ('log', 2, 3), ('sqrt', 2, 4), ('^', 2, 5),
+            # Zeile 3: Numpad 7-9 und grundlegende Lösch-Operatoren
+            ('7', 3, 0), ('8', 3, 1), ('9', 3, 2), ('/', 3, 3), ('C', 3, 4), ('←', 3, 5),
+            # Zeile 4: Numpad 4-6
+            ('4', 4, 0), ('5', 4, 1), ('6', 4, 2), ('*', 4, 3), ('(', 4, 4), (')', 4, 5),
+            # Zeile 5: Numpad 1-3
+            ('1', 5, 0), ('2', 5, 1), ('3', 5, 2), ('-', 5, 3), ('pi', 5, 4), ('e', 5, 5),
+            # Zeile 6: Numpad 0 und Gleichheitszeichen
+            ('0', 6, 0), ('.', 6, 1), ('=', 6, 2), ('+', 6, 3), ('ans', 6, 4), ('j', 6, 5)
         ]
         
-        # Farbzuordnung
         def get_bg(key):
-            if key == 'C':
-                return "#FFCDD2"
-            elif key in ['/', '*', '-', '+']:
-                return "#FFB74D"
-            elif key == '=':
-                return "#4CAF50"
-            elif key in ['sin','cos','tan','asin','acos','atan','sinh','cosh','tanh','log','sqrt','^']:
-                return "#e0e0e0"
-            elif key in ['(',')','←','ans','j','Modus','Komplex','Theme','Sprache','pi','e']:
-                return "#d9d9d9"
-            else:
-                return "#ffffff"
+            if key == 'C': return "#FFCDD2"
+            elif key in ['/', '*', '-', '+']: return "#FFB74D"
+            elif key == '=': return "#4CAF50"
+            elif key in ['sin','cos','tan','asin','acos','atan','sinh','cosh','tanh','log','sqrt','^']: return "#e0e0e0"
+            elif key in ['(',')','←','ans','j','Modus','Komplex','Theme','Sprache','pi','e']: return "#d9d9d9"
+            else: return "#ffffff"
         
         self.buttons = {}
         for (key, r, c) in btn_keys:
             if not key:
-                continue  # leeres Feld überspringen
+                continue 
             bg = get_bg(key)
             text = self.lang_data[self.lang].get(key, key)
-            btn = tk.Button(self.btn_frame, text=text, font=("Helvetica", 11, "bold"),
-                            bg=bg, fg="black", bd=0, relief="flat",
-                            activebackground="#c0c0c0", activeforeground="black",
-                            command=lambda k=key: self._on_btn(k))
+            
+            # BENUTZE DIE NEUE ROUNDEDBUTTON KLASSE
+            btn = RoundedButton(self.btn_frame, text=text, bg=bg, fg="black", radius=15,
+                                command=lambda k=key: self._on_btn(k))
             btn.key = key
-            btn.grid(row=r, column=c, padx=2, pady=2, sticky="nsew")
+            
+            # Etwas mehr Padding (padx=4, pady=4), damit die Tasten nicht "zusammenkleben"
+            btn.grid(row=r, column=c, padx=4, pady=4, sticky="nsew")
             self.buttons[key] = btn
         
-        # Spalten konfigurieren (6 Spalten)
-        for i in range(6):
-            self.btn_frame.columnconfigure(i, weight=1)
-        for i in range(7):
-            self.btn_frame.rowconfigure(i, weight=1)
+        for i in range(6): self.btn_frame.columnconfigure(i, weight=1)
+        for i in range(7): self.btn_frame.rowconfigure(i, weight=1)
     
     def _on_btn(self, key):
-        if key == 'C':
-            self.display.delete(0, tk.END)
-        elif key == '←':
-            self.display.delete(len(self.display.get())-1, tk.END)
-        elif key == '=':
-            self._calc()
-        elif key == 'Modus':
-            self._cycle_angle_mode()
-        elif key == 'Komplex':
-            self._toggle_complex()
-        elif key == 'Theme':
-            self._cycle_theme()
-        elif key == 'Sprache':
-            self._toggle_language()
-        else:
-            self.display.insert(tk.END, key)
+        if key == 'C': self.display.delete(0, tk.END)
+        elif key == '←': self.display.delete(len(self.display.get())-1, tk.END)
+        elif key == '=': self._calc()
+        elif key == 'Modus': self._cycle_angle_mode()
+        elif key == 'Komplex': self._toggle_complex()
+        elif key == 'Theme': self._cycle_theme()
+        elif key == 'Sprache': self._toggle_language()
+        else: self.display.insert(tk.END, key)
     
     def _key_press(self, event):
-        if event.keysym in ('Return', 'Escape', 'BackSpace'):
-            return
+        if event.keysym in ('Return', 'Escape', 'BackSpace'): return
         char = event.char
-        if char and char.isprintable():
-            self.display.insert(tk.END, char)
+        if char and char.isprintable(): self.display.insert(tk.END, char)
     
     def _calc(self):
         expr = self.display.get()
         res = self.evaluator.evaluate(expr)
         
         if isinstance(res, float):
-            if abs(res) < 1e-10:
-                res = 0.0
+            if abs(res) < 1e-10: res = 0.0
             res_str = f"{res:.10f}".rstrip('0').rstrip('.') if '.' in f"{res:.10f}" else str(res)
         elif isinstance(res, complex):
             res_str = f"{res.real:.10f}".rstrip('0').rstrip('.') if abs(res.imag) < 1e-10 else str(res)
-        else:
-            res_str = str(res)
+        else: res_str = str(res)
         
         self.display.delete(0, tk.END)
         self.display.insert(0, res_str)
         self.history.append((expr, res_str))
         
-        try:
-            self.evaluator.vars["ans"] = float(res) if not isinstance(res, complex) else complex(res)
-        except:
-            pass
+        try: self.evaluator.vars["ans"] = float(res) if not isinstance(res, complex) else complex(res)
+        except: pass
     
     def show_history(self):
         if not self.history:
@@ -380,8 +385,7 @@ class UltimateCalculatorGUI:
         listbox = tk.Listbox(hist_inner, font=("Courier", 10), bg="#f0f0f0", fg="black")
         listbox.pack(fill="both", expand=True, padx=10, pady=10)
         
-        for expr, res in self.history[-20:]:
-            listbox.insert(tk.END, f"{expr} = {res}")
+        for expr, res in self.history[-20:]: listbox.insert(tk.END, f"{expr} = {res}")
         
         scrollbar = tk.Scrollbar(listbox, orient="vertical")
         scrollbar.pack(side="right", fill="y")
@@ -407,8 +411,7 @@ class UltimateCalculatorGUI:
         self.evaluator.use_complex = self.use_complex
         self.evaluator.update_functions()
         mode_text = self.lang_data[self.lang][self.angle_mode.capitalize()]
-        if self.use_complex:
-            mode_text += " C" if self.lang=='en' else " K"
+        if self.use_complex: mode_text += " C" if self.lang=='en' else " K"
         self.mode_label.config(text=mode_text)
     
     def _cycle_theme(self):
@@ -419,21 +422,15 @@ class UltimateCalculatorGUI:
     
     def _toggle_language(self):
         self.lang = 'en' if self.lang == 'de' else 'de'
-        # Fenstertitel aktualisieren (Canvas-Text ändern)
-        # Wir müssen den Canvas-Text ändern: Die Titelleiste ist im RoundWindow separat,
-        # wir haben dort title_label. Zugriff über self.win.
-        # Im RoundWindow ist title_label ein Attribut? Wir haben es nicht gespeichert.
-        # Einfacher: Wir aktualisieren den Header-Label und Buttons, den Fenstertitel lassen wir.
-        # Fenstertitel ist im Canvas als Text? Nein, in der Titelleiste.
-        # Um es einfach zu halten, lassen wir den Fenstertitel unverändert oder setzen ihn neu.
-        # Wir können den Titel im RoundWindow ändern, indem wir auf das Label zugreifen.
-        # Aber das ist kompliziert. Wir ignorieren es oder setzen den Fenstertitel später neu.
-        # Für dieses Beispiel lassen wir den Fenstertitel unverändert.
         
+        # Der Sprachen-Fix aus der vorherigen Lösung greift hier direkt:
+        self.win.title_label.config(text=self.lang_data[self.lang]['window_title'])
         self.header_label.config(text=self.lang_data[self.lang]['header'])
         self.history_btn.config(text=self.lang_data[self.lang]['History'])
+        
         for key, btn in self.buttons.items():
             btn.config(text=self.lang_data[self.lang].get(key, key))
+            
         mode_name = self.lang_data[self.lang][self.angle_mode.capitalize()]
         if self.use_complex:
             mode_name += " C" if self.lang=='en' else " K"
@@ -441,56 +438,47 @@ class UltimateCalculatorGUI:
     
     def _apply_theme(self):
         if self.theme == 'light':
-            bg_main = "#ffffff"
-            fg_main = "#000000"
-            btn_bg = "#f0f0f0"
-            display_bg = "#f0f0f0"
-            special_bg = "#e0e0e0"
+            bg_main = "#ffffff"; fg_main = "#000000"; btn_bg = "#f0f0f0"
+            display_bg = "#f0f0f0"; special_bg = "#e0e0e0"
         elif self.theme == 'dark':
-            bg_main = "#2d2d2d"
-            fg_main = "#ffffff"
-            btn_bg = "#3c3c3c"
-            display_bg = "#1e1e1e"
-            special_bg = "#4a4a4a"
+            bg_main = "#2d2d2d"; fg_main = "#ffffff"; btn_bg = "#3c3c3c"
+            display_bg = "#1e1e1e"; special_bg = "#4a4a4a"
         else:  # blue
-            bg_main = "#e3f2fd"
-            fg_main = "#000000"
-            btn_bg = "#bbdefb"
-            display_bg = "#ffffff"
-            special_bg = "#90caf9"
+            bg_main = "#e3f2fd"; fg_main = "#000000"; btn_bg = "#bbdefb"
+            display_bg = "#ffffff"; special_bg = "#90caf9"
         
-        # Hauptfenster
         self.root.configure(bg=bg_main)
         self.win.canvas.configure(bg=bg_main)
         self.win.canvas.delete("all")
         self.win.canvas.create_round_rect(5, 5, 575, 715, r=20, fill=bg_main, outline="#cccccc", width=2)
         self.inner.configure(bg=bg_main)
         
-        # Header
         self.header_frame.configure(bg=bg_main)
         self.mode_label.configure(bg=bg_main, fg=fg_main)
         self.header_label.configure(bg=bg_main, fg="#2196F3")
-        
-        # Display
         self.display.configure(bg=display_bg, fg=fg_main)
-        
-        # History-Button
         self.history_btn.configure(bg=special_bg, fg=fg_main)
+        self.btn_frame.configure(bg=bg_main)
         
-        # Buttons
+        # Farben der RoundedButtons anwenden (inkl. canvas_bg für unsichtbare Ecken)
         for key, btn in self.buttons.items():
+            current_fg = fg_main
+            
             if key == 'C':
-                btn.configure(bg="#FFCDD2" if self.theme=='light' else "#d32f2f", fg=fg_main)
+                current_bg = "#FFCDD2" if self.theme=='light' else "#d32f2f"
             elif key in ['/', '*', '-', '+']:
-                btn.configure(bg="#FFB74D" if self.theme=='light' else "#f57c00", fg=fg_main)
+                current_bg = "#FFB74D" if self.theme=='light' else "#f57c00"
             elif key == '=':
-                btn.configure(bg="#4CAF50", fg="white")
+                current_bg = "#4CAF50"
+                current_fg = "white"
             elif key in ['sin','cos','tan','asin','acos','atan','sinh','cosh','tanh','log','sqrt','^']:
-                btn.configure(bg=special_bg, fg=fg_main)
+                current_bg = special_bg
             elif key in ['(',')','←','ans','j','Modus','Komplex','Theme','Sprache','pi','e']:
-                btn.configure(bg=special_bg, fg=fg_main)
+                current_bg = special_bg
             else:
-                btn.configure(bg=btn_bg, fg=fg_main)
+                current_bg = display_bg if self.theme == 'blue' else btn_bg
+                
+            btn.config(bg=current_bg, fg=current_fg, canvas_bg=bg_main)
 
 # ------------------------------------------------------------
 # Hauptprogramm
