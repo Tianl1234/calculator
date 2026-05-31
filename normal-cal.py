@@ -19,6 +19,7 @@ if sys.platform == "win32":
 
 # ------------------------------------------------------------
 # Hilfsfunktion für abgerundete Rechtecke (Canvas)
+# FIXED: Use proper arc drawing with polygon
 # ------------------------------------------------------------
 def _create_round_rect(self, x1, y1, x2, y2, r=25, **kwargs):
     """Create a rounded rectangle"""
@@ -27,33 +28,53 @@ def _create_round_rect(self, x1, y1, x2, y2, r=25, **kwargs):
     width = kwargs.get('width', 1)
     
     # Ensure radius doesn't exceed half the rectangle dimensions
-    r = min(r, (x2 - x1) // 2, (y2 - y1) // 2)
+    r = min(r, abs(x2 - x1) // 2, abs(y2 - y1) // 2)
     
-    # Create filled rectangles to form the rounded rect shape
-    # Horizontal center rectangle
-    self.create_rectangle(x1+r, y1, x2-r, y2, fill=fill, outline='')
-    # Vertical center rectangle
-    self.create_rectangle(x1, y1+r, x2, y2-r, fill=fill, outline='')
+    # Build points for a smooth rounded rectangle polygon
+    points = []
     
-    # Four corner arcs with proper positioning
-    # Top-left corner
-    self.create_arc(x1, y1, x1+2*r, y1+2*r, start=90, extent=90, fill=fill, outline=outline, width=width)
-    # Top-right corner
-    self.create_arc(x2-2*r, y1, x2, y1+2*r, start=0, extent=90, fill=fill, outline=outline, width=width)
-    # Bottom-right corner
-    self.create_arc(x2-2*r, y2-2*r, x2, y2, start=270, extent=90, fill=fill, outline=outline, width=width)
-    # Bottom-left corner
-    self.create_arc(x1, y2-2*r, x1+2*r, y2, start=180, extent=90, fill=fill, outline=outline, width=width)
+    # Top-left corner (90 degree arc)
+    for i in range(r + 1):
+        angle = (90 - i * 90 / r) * math.pi / 180
+        px = x1 + r - r * math.cos(angle)
+        py = y1 + r - r * math.sin(angle)
+        points.append((px, py))
     
-    # Four straight edge lines with outline
-    # Top line
-    self.create_line(x1+r, y1, x2-r, y1, fill=outline, width=width)
-    # Right line
-    self.create_line(x2, y1+r, x2, y2-r, fill=outline, width=width)
-    # Bottom line
-    self.create_line(x2-r, y2, x1+r, y2, fill=outline, width=width)
-    # Left line
-    self.create_line(x1, y2-r, x1, y1+r, fill=outline, width=width)
+    # Top edge
+    points.append((x2 - r, y1))
+    
+    # Top-right corner (90 degree arc)
+    for i in range(r + 1):
+        angle = (0 - i * 90 / r) * math.pi / 180
+        px = x2 - r + r * math.cos(angle)
+        py = y1 + r - r * math.sin(angle)
+        points.append((px, py))
+    
+    # Right edge
+    points.append((x2, y2 - r))
+    
+    # Bottom-right corner (90 degree arc)
+    for i in range(r + 1):
+        angle = (-90 - i * 90 / r) * math.pi / 180
+        px = x2 - r + r * math.cos(angle)
+        py = y2 - r - r * math.sin(angle)
+        points.append((px, py))
+    
+    # Bottom edge
+    points.append((x1 + r, y2))
+    
+    # Bottom-left corner (90 degree arc)
+    for i in range(r + 1):
+        angle = (-180 - i * 90 / r) * math.pi / 180
+        px = x1 + r - r * math.cos(angle)
+        py = y2 - r - r * math.sin(angle)
+        points.append((px, py))
+    
+    # Left edge
+    points.append((x1, y1 + r))
+    
+    # Create the polygon with the calculated points
+    self.create_polygon(points, fill=fill, outline=outline, width=width, smooth=True)
     
     return None
 
@@ -79,15 +100,54 @@ class RoundedButton(tk.Canvas):
         self.bind("<ButtonRelease-1>", self._on_release)
 
     def _get_points(self, x1, y1, x2, y2, r):
-        return (x1+r, y1, x1+r, y1, x2-r, y1, x2-r, y1, x2, y1,
-                x2, y1+r, x2, y1+r, x2, y2-r, x2, y2-r, x2, y2,
-                x2-r, y2, x2-r, y2, x1+r, y2, x1+r, y2, x1, y2,
-                x1, y2-r, x1, y2-r, x1, y1+r, x1, y1+r, x1, y1)
+        points = []
+        
+        # Top-left corner
+        for i in range(r + 1):
+            angle = (90 - i * 90 / r) * math.pi / 180
+            px = x1 + r - r * math.cos(angle)
+            py = y1 + r - r * math.sin(angle)
+            points.append((px, py))
+        
+        # Top edge
+        points.append((x2 - r, y1))
+        
+        # Top-right corner
+        for i in range(r + 1):
+            angle = (0 - i * 90 / r) * math.pi / 180
+            px = x2 - r + r * math.cos(angle)
+            py = y1 + r - r * math.sin(angle)
+            points.append((px, py))
+        
+        # Right edge
+        points.append((x2, y2 - r))
+        
+        # Bottom-right corner
+        for i in range(r + 1):
+            angle = (-90 - i * 90 / r) * math.pi / 180
+            px = x2 - r + r * math.cos(angle)
+            py = y2 - r - r * math.sin(angle)
+            points.append((px, py))
+        
+        # Bottom edge
+        points.append((x1 + r, y2))
+        
+        # Bottom-left corner
+        for i in range(r + 1):
+            angle = (-180 - i * 90 / r) * math.pi / 180
+            px = x1 + r - r * math.cos(angle)
+            py = y2 - r - r * math.sin(angle)
+            points.append((px, py))
+        
+        # Left edge
+        points.append((x1, y1 + r))
+        
+        return points
 
     def _on_resize(self, event):
         w, h = event.width, event.height
         pts = self._get_points(2, 2, w-2, h-2, self.radius)
-        self.coords(self.rect_id, *pts)
+        self.coords(self.rect_id, *[coord for point in pts for coord in point])
         self.coords(self.text_id, w/2, h/2)
         
     def _on_press(self, event):
