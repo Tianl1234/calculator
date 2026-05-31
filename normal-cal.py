@@ -26,22 +26,33 @@ def _create_round_rect(self, x1, y1, x2, y2, r=25, **kwargs):
     outline = kwargs.get('outline', 'black')
     width = kwargs.get('width', 1)
     
+    # Ensure radius doesn't exceed half the rectangle dimensions
     r = min(r, (x2 - x1) // 2, (y2 - y1) // 2)
     
-    # Center rectangles for fill
+    # Create filled rectangles to form the rounded rect shape
+    # Horizontal center rectangle
     self.create_rectangle(x1+r, y1, x2-r, y2, fill=fill, outline='')
+    # Vertical center rectangle
     self.create_rectangle(x1, y1+r, x2, y2-r, fill=fill, outline='')
     
-    # Four corner arcs (both fill and outline in one)
+    # Four corner arcs with proper positioning
+    # Top-left corner
     self.create_arc(x1, y1, x1+2*r, y1+2*r, start=90, extent=90, fill=fill, outline=outline, width=width)
+    # Top-right corner
     self.create_arc(x2-2*r, y1, x2, y1+2*r, start=0, extent=90, fill=fill, outline=outline, width=width)
+    # Bottom-right corner
     self.create_arc(x2-2*r, y2-2*r, x2, y2, start=270, extent=90, fill=fill, outline=outline, width=width)
+    # Bottom-left corner
     self.create_arc(x1, y2-2*r, x1+2*r, y2, start=180, extent=90, fill=fill, outline=outline, width=width)
     
-    # Straight edges with outline
+    # Four straight edge lines with outline
+    # Top line
     self.create_line(x1+r, y1, x2-r, y1, fill=outline, width=width)
+    # Right line
     self.create_line(x2, y1+r, x2, y2-r, fill=outline, width=width)
+    # Bottom line
     self.create_line(x2-r, y2, x1+r, y2, fill=outline, width=width)
+    # Left line
     self.create_line(x1, y2-r, x1, y1+r, fill=outline, width=width)
     
     return None
