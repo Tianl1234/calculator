@@ -8,7 +8,7 @@ import operator
 import math
 import cmath
 import tkinter as tk
-from tkinter import messagebox, ttk
+from tkinter import messagebox
 
 # ------------------------------------------------------------
 # Konsole sofort verstecken (für .pyw)
@@ -74,7 +74,7 @@ def _create_round_rect(self, x1, y1, x2, y2, r=25, **kwargs):
     points.append((x1, y1 + r))
     
     # Create the polygon with the calculated points
-    self.create_polygon(points, fill=fill, outline=outline, width=width, smooth=True)
+    self.create_polygon(points, fill=fill, outline=outline, width=width)
     
     return None
 
@@ -92,7 +92,7 @@ class RoundedButton(tk.Canvas):
         self.fg_color = fg
         self.radius = radius
         
-        self.rect_id = self.create_polygon([0,0,0,0], smooth=True, fill=self.bg_color, outline="")
+        self.rect_id = self.create_polygon([0,0,0,0], fill=self.bg_color, outline="")
         self.text_id = self.create_text(0, 0, text=self.text_val, fill=self.fg_color, font=("Helvetica", 11, "bold"))
         
         self.bind("<Configure>", self._on_resize)
@@ -230,7 +230,7 @@ class SafeEvaluator:
         self.ops = {
             ast.Add: operator.add, ast.Sub: operator.sub,
             ast.Mult: operator.mul, ast.Div: operator.truediv,
-            ast.Pow: operator.pow, ast.USub: operator.neg
+            ast.Pow: operator.pow, ast.Mod: operator.mod, ast.USub: operator.neg
         }
         self.angle_mode = angle_mode
         self.use_complex = use_complex
@@ -293,7 +293,7 @@ class SafeEvaluator:
         if isinstance(node, ast.Name):
             if node.id in self.vars: return self.vars[node.id]
             if node.id == 'j': return 1j
-            return 0
+            raise ValueError(f"Unbekannte Variable: {node.id}")
         if isinstance(node, ast.BinOp):
             left = self._eval_node(node.left)
             right = self._eval_node(node.right)
@@ -354,7 +354,7 @@ class UltimateCalculatorGUI:
         self.root.bind("<Key>", self._key_press)
         self.root.bind("<Return>", lambda e: self._on_btn('='))
         self.root.bind("<Escape>", lambda e: self._on_btn('C'))
-        self.root.bind("<BackSpace>", lambda e: self._on_btn('←'))
+        self.root.bind("<BackSpace>", lambda e: self._on_btn('←') or "break")
         
         self._build_ui()
         self._apply_theme()
@@ -374,6 +374,9 @@ class UltimateCalculatorGUI:
         self.display = tk.Entry(self.inner, font=("Helvetica", 32),
                                 bg="#f0f0f0", fg="black", bd=1, relief="solid", justify="right")
         self.display.pack(fill="x", padx=20, pady=10)
+        
+        # Bind paste event so error-reset logic also works for Ctrl+V / context menu paste
+        self.display.bind("<<Paste>>", self._on_paste)
         
         self.history_btn = tk.Button(self.inner, text=self.lang_data[self.lang]['History'],
                                       font=("Segoe UI", 9), command=self.show_history,
@@ -429,22 +432,57 @@ class UltimateCalculatorGUI:
         for i in range(7): self.btn_frame.rowconfigure(i, weight=1)
     
     def _on_btn(self, key):
-        if key == 'C': self.display.delete(0, tk.END)
+        # Clear error state on new input (prevents error loop and appending to "Fehler: ...")
+        txt = self.display.get()
+        is_error = txt.startswith(("Fehler", "Error"))
+        if is_error and key not in ('C', 'Modus', 'Komplex', 'Theme', 'Sprache'):
+            self.display.delete(0, tk.END)
+            if key == '←':
+                return  # cleared, nothing more for backspace on error msg
+            if key == '=':
+                return  # clear error on =, do nothing (or could re-calc last, but simple)
+        
+        if key == 'C':
+            self.display.delete(0, tk.END)
         elif key == '←':
-            current = self.display.get()
-            if current:
-                self.display.delete(len(current)-1, tk.END)
-        elif key == '=': self._calc()
-        elif key == 'Modus': self._cycle_angle_mode()
-        elif key == 'Komplex': self._toggle_complex()
-        elif key == 'Theme': self._cycle_theme()
-        elif key == 'Sprache': self._toggle_language()
-        else: self.display.insert(tk.END, key)
+            # Delete character BEFORE current cursor position (respects cursor, consistent with typing)
+            try:
+                idx = self.display.index(tk.INSERT)
+                if idx > 0:
+                    self.display.delete(idx - 1, idx)
+            except Exception:
+                pass
+        elif key == '=':
+            self._calc()
+        elif key == 'Modus':
+            self._cycle_angle_mode()
+        elif key == 'Komplex':
+            self._toggle_complex()
+        elif key == 'Theme':
+            self._cycle_theme()
+        elif key == 'Sprache':
+            self._toggle_language()
+        else:
+            # Insert at current cursor position (allows editing in middle of expression)
+            self.display.insert(tk.INSERT, key)
     
     def _key_press(self, event):
-        if event.keysym in ('Return', 'Escape', 'BackSpace'): return
+        if event.keysym in ('Return', 'Escape', 'BackSpace'):
+            return
         char = event.char
-        if char and char.isprintable(): self.display.insert(tk.END, char)
+        if char and char.isprintable():
+            # Clear error state before inserting typed char
+            txt = self.display.get()
+            if txt.startswith(("Fehler", "Error")):
+                self.display.delete(0, tk.END)
+            self.display.insert(tk.INSERT, char)
+    
+    def _on_paste(self, event):
+        # Clear error state before paste happens (so Ctrl+V etc. also trigger reset)
+        txt = self.display.get()
+        if txt.startswith(("Fehler", "Error")):
+            self.display.delete(0, tk.END)
+        # Do NOT return "break" — let the default paste action proceed normally
     
     def _calc(self):
         expr = self.display.get()
@@ -456,18 +494,30 @@ class UltimateCalculatorGUI:
             return
         
         if isinstance(res, float):
-            if abs(res) < 1e-10: res = 0.0
+            if abs(res) < 1e-10:
+                res = 0.0
             res_str = f"{res:.10f}".rstrip('0').rstrip('.') if '.' in f"{res:.10f}" else str(res)
         elif isinstance(res, complex):
             res_str = f"{res.real:.10f}".rstrip('0').rstrip('.') if abs(res.imag) < 1e-10 else str(res)
-        else: res_str = str(res)
+        else:
+            res_str = str(res)
         
         self.display.delete(0, tk.END)
         self.display.insert(0, res_str)
         self.history.append((expr, res_str))
         
-        try: self.evaluator.vars["ans"] = float(res) if not isinstance(res, complex) else complex(res)
-        except: pass
+        # Prevent unbounded memory growth (keep only last 200 entries)
+        if len(self.history) > 200:
+            self.history = self.history[-200:]
+        
+        # Robust ans save (prevents any type issues if res ever non-numeric)
+        try:
+            if isinstance(res, complex):
+                self.evaluator.vars["ans"] = complex(res)
+            else:
+                self.evaluator.vars["ans"] = float(res)
+        except (ValueError, TypeError, OverflowError):
+            pass
     
     def show_history(self):
         if not self.history:
@@ -494,7 +544,9 @@ class UltimateCalculatorGUI:
         tk.Button(hist_inner, text=close_text, command=hist_root.destroy,
                   bg="#e0e0e0", fg="black", bd=0, padx=10, pady=2).pack(pady=5)
         
-        hist_root.mainloop()
+        # Proper non-nested way to show secondary window (modal dialog pattern)
+        hist_root.grab_set()
+        hist_root.wait_window()
     
     def _cycle_angle_mode(self):
         modes = ['deg', 'rad', 'grad']
@@ -506,6 +558,16 @@ class UltimateCalculatorGUI:
         self.mode_label.config(text=mode_name)
     
     def _toggle_complex(self):
+        # When leaving complex mode, sanitize 'ans' so it doesn't contain complex numbers
+        # (prevents TypeError when real-mode math.sin/cos etc. receive complex 'ans')
+        if self.use_complex:
+            current_ans = self.evaluator.vars.get("ans", 0)
+            if isinstance(current_ans, complex):
+                if abs(current_ans.imag) < 1e-10:
+                    self.evaluator.vars["ans"] = current_ans.real
+                else:
+                    self.evaluator.vars["ans"] = 0.0
+        
         self.use_complex = not self.use_complex
         self.evaluator.use_complex = self.use_complex
         self.evaluator.update_functions()
